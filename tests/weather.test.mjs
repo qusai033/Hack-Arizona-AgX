@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { simulateWeather, loadOrchardForecast, normalizeHourly, locations } from '../frontend/weather.js';
+import { simulateWeather, loadOrchardForecast, normalizeHourly, locations, validateForecastIssuance, MAX_FORECAST_ISSUANCE_AGE_MS } from '../frontend/weather.js';
 import { getProfile } from '../frontend/engine/index.js';
 import { assertSnapshot } from '../frontend/contract.js';
 
@@ -27,14 +27,18 @@ test('NWS data uses hourly input, caches successful fetch, and falls back determ
   assert.equal(normalizeHourly(periods[0]).wind,7);
   assert.equal(normalizeHourly({...periods[0],windSpeed:'0 mph',windDirection:''}).wind,0);
   const forecastHourly='https://api.weather.gov/gridpoints/HNX/53,50/forecast/hourly';
-  const fetchImpl=async url=>({ok:true,json:async()=>url===forecastHourly?{properties:{periods}}:{properties:{forecastHourly}}});
+  const fetchImpl=async url=>({ok:true,json:async()=>url===forecastHourly?{properties:{periods,updateTime:new Date(nowMs-20*60000).toISOString()}}:{properties:{forecastHourly}}});
   const store=new Map(),cache={getItem:key=>store.get(key),setItem:(key,value)=>store.set(key,value)};
   const profile=getProfile('contact_fungicide');
   const live=await loadOrchardForecast('fresno',profile,{nowMs,cache,fetchImpl});
   assert.equal(live.source,'nws');assert.equal(live.snapshots.length,24);
+  assert.equal(live.issued_at,new Date(nowMs-20*60000).toISOString());
+  assert.equal(live.fetched_at,new Date(nowMs).toISOString());
+  assert.equal(live.issuance_age_minutes,20);
   const offline=async()=>{throw new Error('Offline');};
   const cached=await loadOrchardForecast('fresno',profile,{nowMs,cache,fetchImpl:offline});
   assert.equal(cached.source,'cached_nws');
+  assert.equal(cached.issued_at,live.issued_at);
   assert.deepEqual(cached.snapshots.map(row=>row.readings),live.snapshots.map(row=>row.readings));
   const a=await loadOrchardForecast('yuba_city',profile,{nowMs,fetchImpl:offline});
   assert.equal(a.source,'synthetic');assert.equal(a.time_zone,'America/Los_Angeles');
@@ -69,7 +73,7 @@ test('city selections use different NWS point coordinates and isolated cache key
     seen.push(url);
     return {ok:true,json:async()=>url.includes('/points/')?
       {properties:{forecastHourly:'https://api.weather.gov/gridpoints/HNX/53,50/forecast/hourly'}}:
-      {properties:{periods:rows}}};
+      {properties:{periods:rows,generatedAt:new Date(nowMs-15*60000).toISOString()}}};
   };
   const profile=getProfile('contact_fungicide');
   for(const id of Object.keys(locations)){
@@ -104,4 +108,70 @@ test('production HTML derives forecast options from the shared registry and requ
   assert.ok(app.includes("result.source==='synthetic'&&mode!=='demo'"));
   assert.ok(app.includes("forecastRequestId"));
   assert.ok(app.includes('weatherForecast.location_id!==id'));
+});
+
+test('issuance timestamps use source update time, not retrieval or valid period',()=>{
+  const nowMs=Date.parse('2026-11-15T18:00:00Z');
+  assert.deepEqual(validateForecastIssuance({updateTime:new Date(nowMs-60000).toISOString()},nowMs),{
+    issued_at:new Date(nowMs-60000).toISOString(),issuance_source:'updateTime',issuance_age_minutes:1
+  });
+  assert.equal(validateForecastIssuance({generatedAt:new Date(nowMs-60000).toISOString()},nowMs).issuance_source,'generatedAt');
+  assert.equal(validateForecastIssuance({updated:new Date(nowMs-60000).toISOString()},nowMs).issuance_source,'updated');
+  assert.equal(validateForecastIssuance({updateTime:new Date(nowMs-MAX_FORECAST_ISSUANCE_AGE_MS).toISOString()},nowMs).issuance_age_minutes,360);
+  assert.throws(()=>validateForecastIssuance({},nowMs),/missing/i);
+  assert.throws(()=>validateForecastIssuance({updateTime:'bad'},nowMs),/invalid/i);
+  assert.throws(()=>validateForecastIssuance({updateTime:null,generatedAt:new Date(nowMs).toISOString()},nowMs),/invalid/i);
+  assert.throws(()=>validateForecastIssuance({updateTime:new Date(nowMs-MAX_FORECAST_ISSUANCE_AGE_MS-1).toISOString()},nowMs),/too old/i);
+  assert.throws(()=>validateForecastIssuance({updateTime:new Date(nowMs+6*60000).toISOString()},nowMs),/future/i);
+});
+
+test('stale or missing NWS issuance cannot be hidden by future valid periods or a new fetch time',async()=>{
+  const nowMs=Date.parse('2026-11-15T18:00:00Z'),hour=3600000,profile=getProfile('contact_fungicide');
+  const periods=Array.from({length:24},(_,index)=>({
+    startTime:new Date(nowMs+index*hour).toISOString(),
+    endTime:new Date(nowMs+(index+1)*hour).toISOString(),windSpeed:'5 mph',
+    windDirection:'NW',temperature:75,temperatureUnit:'F',relativeHumidity:{value:50},shortForecast:'Sunny'
+  }));
+  const hourlyUrl='https://api.weather.gov/gridpoints/HNX/53,50/forecast/hourly';
+  const cacheMap=new Map();
+  const cache={getItem:k=>cacheMap.get(k),setItem:(k,v)=>cacheMap.set(k,v)};
+  const fetchFor=metadata=>async url=>({ok:true,json:async()=>url===hourlyUrl?
+    {properties:{periods,...metadata}}:{properties:{forecastHourly:hourlyUrl}}});
+  const fresh=await loadOrchardForecast('fresno',profile,{nowMs,cache,fetchImpl:fetchFor({updateTime:new Date(nowMs-60000).toISOString()})});
+  assert.equal(fresh.source,'nws');
+  assert.equal(fresh.issued_at,new Date(nowMs-60000).toISOString());
+  assert.equal(fresh.snapshots[0].timestamp,new Date(nowMs).toISOString());
+  const stale=await loadOrchardForecast('modesto',profile,{nowMs,fetchImpl:fetchFor({
+    updateTime:'2026-11-01T00:00:00Z',generatedAt:'2026-11-01T00:00:00Z'
+  })});
+  assert.equal(stale.source,'synthetic');
+  assert.match(stale.error,/too old/i);assert.equal(stale.issued_at,null);
+  const missing=await loadOrchardForecast('modesto',profile,{nowMs,fetchImpl:fetchFor({})});
+  assert.equal(missing.source,'synthetic');
+  assert.match(missing.error,/missing/i);
+  const future=await loadOrchardForecast('modesto',profile,{nowMs,fetchImpl:fetchFor({
+    updateTime:new Date(nowMs+10*60000).toISOString()
+  })});
+  assert.equal(future.source,'synthetic');assert.match(future.error,/future/i);
+
+  // A bad live reply may use recent cached NWS but must never claim the bad
+  // response was fresh; both times and source survive.
+  const cached=await loadOrchardForecast('fresno',profile,{nowMs:nowMs+hour,cache,
+    fetchImpl:fetchFor({updateTime:'2026-11-01T00:00:00Z'})});
+  assert.equal(cached.source,'cached_nws');
+  assert.equal(cached.issued_at,fresh.issued_at);
+  assert.equal(cached.fetched_at,fresh.fetched_at);
+  assert.equal(cached.issuance_age_minutes,61);
+  const tooOld=await loadOrchardForecast('fresno',profile,{nowMs:nowMs+7*hour,cache,
+    fetchImpl:async()=>{throw new Error('offline');}});
+  assert.equal(tooOld.source,'synthetic');
+  assert.equal(tooOld.issued_at,null);
+  const legacyMap=new Map(cacheMap);
+  const legacy=JSON.parse(legacyMap.get('canopyguard-nws-v1-fresno'));
+  delete legacy.issued_at;delete legacy.issuance_source;
+  legacyMap.set('canopyguard-nws-v1-fresno',JSON.stringify(legacy));
+  const oldCache={getItem:k=>legacyMap.get(k),setItem:(k,v)=>legacyMap.set(k,v)};
+  const ignored=await loadOrchardForecast('fresno',profile,{nowMs,cache:oldCache,
+    fetchImpl:async()=>{throw new Error('offline');}});
+  assert.equal(ignored.source,'synthetic');
 });
