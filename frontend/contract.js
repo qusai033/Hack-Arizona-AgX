@@ -1,3 +1,4 @@
+import { FRESHNESS_POLICY, describeLimit } from './freshness-policy.js';
 export const STATUSES = ['GO', 'CAUTION', 'STOP'];
 const fail = (path, message) => { throw new TypeError(`${path}: ${message}`); };
 function object(value, path, keys, optional = []) {
@@ -116,10 +117,12 @@ export function deltas(snapshot) {
   const { ground_5ft: g, canopy_30ft: c } = snapshot.readings;
   return { temperature: c.temp_f - g.temp_f, speed: c.wind_speed_mph - g.wind_speed_mph, direction: windDifference(g.wind_dir_deg, c.wind_dir_deg) };
 }
-export function assertFresh(snapshot, now = Date.now(), maxAgeMs = 300000) {
-  const age = now - Date.parse(snapshot.timestamp);
-  if (age > maxAgeMs) throw new Error('Sensor readings are stale. Check the station connection.');
-  if (age < -60000) throw new Error('Sensor timestamp is in the future. Check the station clock.');
+/** Current-observation freshness (docs/FRESHNESS_POLICY.md). `now` is the explicit evaluation clock. */
+export function assertFresh(snapshot, now = Date.now(), maxAgeMs = FRESHNESS_POLICY.observation.maxAgeMs) {
+  const age = now - Date.parse(snapshot?.timestamp);
+  if (!Number.isFinite(age)) throw new Error('Sensor timestamp is missing or invalid. Check the station connection.');
+  if (age > maxAgeMs) throw new Error(`Sensor readings are stale (older than ${describeLimit(maxAgeMs)}). Check the station connection.`);
+  if (age < -FRESHNESS_POLICY.observation.maxFutureMs) throw new Error(`Sensor timestamp is in the future (more than ${describeLimit(FRESHNESS_POLICY.observation.maxFutureMs)} ahead). Check the station clock.`);
 }
 export const escapeHTML = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const signed = (n, digits = 1) => `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(digits)}`;
