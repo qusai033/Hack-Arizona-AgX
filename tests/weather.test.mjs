@@ -49,7 +49,8 @@ test('NWS data uses hourly input, caches successful fetch, and falls back determ
 test('required California forecast cities are stable and have valid location metadata',()=>{
   const expected={fresno:'Fresno, CA',modesto:'Modesto, CA',merced:'Merced, CA',
     bakersfield:'Bakersfield, CA',chico:'Chico, CA',yuba_city:'Yuba City, CA'};
-  assert.deepEqual(Object.keys(locations),Object.keys(expected));
+  // California cities stay first and in order; Arizona AZMET sites follow them.
+  assert.deepEqual(Object.keys(locations).slice(0,6),Object.keys(expected));
   for(const [id,label] of Object.entries(expected)){
     const place=locations[id];
     assert.equal(place.label,label);
@@ -86,7 +87,7 @@ test('city selections use different NWS point coordinates and isolated cache key
     assert.ok(store.has('canopyguard-nws-v1-'+id));
     assert.ok(seen.includes('https://api.weather.gov/points/'+locations[id].latitude+','+locations[id].longitude));
   }
-  assert.equal([...store.keys()].length,6);
+  assert.equal([...store.keys()].length,Object.keys(locations).length);
   const fail=async()=>{throw new Error('offline');};
   const merced=await loadOrchardForecast('merced',profile,{nowMs,cache,fetchImpl:fail});
   assert.equal(merced.source,'cached_nws');

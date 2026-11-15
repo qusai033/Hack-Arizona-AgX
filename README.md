@@ -77,6 +77,10 @@ Use `http://localhost:5173/?mode=demo` for the explicitly simulated hackathon wa
 
 The default location selection, startup request, 30-second refresh, stale-response rejection, and source display belong to `frontend/app.js`. Forecast location metadata and city-scoped persistence live in `frontend/weather.js`. These modifications do not validate the forecasting model or pesticide label compliance.
 
+## AZMET station check (Arizona)
+
+The forecast location list also includes six Arizona sites at AZMET weather stations. For those, the forecast panel shows the station's latest measured observation beside the NWS-modeled ground estimate, the difference between them, and a station-anchored screening. This is a comparison only: the 30 ft values remain modeled and the recorded decision is unchanged. See [docs/WEATHER_SIMULATION.md](docs/WEATHER_SIMULATION.md#azmet-station-check-arizona-locations).
+
 ## Audit evidence schema (v2)
 
 New audit records preserve the complete source snapshot, event ID, full treatment session and known evaluation context. Built-in demo/forecast records include the actual engine version, effective thresholds, diagnostics, and explicit recording versus observation/forecast-valid times; external/imported evaluations are labeled unverified rather than falsely attributed to the built-in engine. Existing v1 records stay readable with `evidence: null`, without invented historical metadata.

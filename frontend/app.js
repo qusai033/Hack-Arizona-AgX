@@ -27,6 +27,7 @@ let audit;
 let judgeGroundOnly=false;
 let session=null, simulationMinute=0, overrides={}, weatherForecast=null, weatherRequest;
 let forecastRequestId=0, forecastPoll=null;
+const stationMemo=new Map(); // limits AZMET requests across the 30-second forecast refresh
 const explicitDemo = new URLSearchParams(window.location.search).get('mode') === 'demo';
 const selectedLocation = () => locations[$('weather-location').value];
 let demoState=null, judgeReplay=null;
@@ -42,6 +43,8 @@ function updateProfileForecast() {
     weatherForecast.snapshots=weatherForecast.snapshots.map(row=>evaluateDemo(row,snapshot.pesticide_profile));
     weatherForecast.window=forecastWindow(weatherForecast.snapshots,Date.now(),weatherForecast.time_zone);
     forecast=weatherForecast.snapshots;
+    const station=weatherForecast.station;
+    if(station?.anchored_snapshot)station.anchored_snapshot=evaluateDemo(station.anchored_snapshot,snapshot.pesticide_profile);
   }else{
     intervalMinutes=30;forecast=demoForecast(snapshot.pesticide_profile);
   }
@@ -203,8 +206,44 @@ function clearForecast(message='No forecast connected. Awaiting the team’s for
   $('next-window').textContent='Next forecast GO window: unavailable';
   $('forecast-detail').textContent=message;
   $('forecast-source').textContent='FORECAST UNAVAILABLE';
+  renderStationCheck();
+}
+/** AZMET station observation beside the regional model. Informational: it is not the
+ * recorded decision, and nothing here is a measured 30 ft reading. */
+function renderStationCheck() {
+  const box=$('station-check'), station=weatherForecast?.station, problem=weatherForecast?.station_error;
+  box.hidden=!station&&!problem;
+  if(box.hidden){box.replaceChildren();return;}
+  const line=(text,tag='p')=>{const node=document.createElement(tag);node.textContent=text;return node;};
+  if(!station){
+    box.replaceChildren(line('AZMET station check','h3'),line(`Station observation unavailable: ${problem}. The forecast shown is NWS-modeled only.`));
+    return;
+  }
+  const zone=weatherForecast.time_zone, m=station.measured, h=station.heights;
+  const size=(value,unit,more,less)=>Math.abs(value)<0.05?`the same${unit==='°F'?' temperature':' speed'}`:`${Math.abs(value).toFixed(1)}${unit} ${value>0?more:less}`;
+  const lines=[line(`AZMET station check · ${station.station_name} (${station.station_id})`,'h3'),
+    line(`Measured ${Math.round(station.age_minutes)} min ago (${formatTime(station.observed_at,zone)}): ${m.temp_f.toFixed(1)}°F and ${m.humidity_pct.toFixed(0)}% RH at ${h.temperature_ft} ft · ${m.wind_speed_mph.toFixed(1)} mph ${m.wind_speed_mph>0?'from '+m.wind_dir_cardinal:'(calm)'} at ${h.wind_ft} ft.`)];
+  if(station.modeled_ground){
+    // Differences are taken from the rounded values shown, so the sentence agrees with itself.
+    const g=station.modeled_ground,round1=value=>Number(value.toFixed(1));
+    const versus=(...args)=>size(...args)+(Math.abs(args[0])<0.05?' as the station':' than the station');
+    const d={temp_f:round1(g.temp_f)-round1(m.temp_f),wind_speed_mph:round1(g.wind_speed_mph)-round1(m.wind_speed_mph)};
+    lines.push(line(`NWS model for this hour estimates ${g.temp_f.toFixed(1)}°F and ${g.wind_speed_mph.toFixed(1)} mph near the ground: ${versus(d.temp_f,'°F','warmer','cooler')}, ${versus(d.wind_speed_mph,' mph','stronger','lighter')}.`));
+  }else lines.push(line('No NWS model period covers this observation, so no comparison is shown.'));
+  if(station.near_surface_gradient_f!==null){
+    const g=station.near_surface_gradient_f;
+    lines.push(line(`Measured between ${h.low_temperature_ft} ft and ${h.temperature_ft} ft: air is ${size(g,'°F','warmer','cooler')} above${g>0?' — a measured near-surface inversion signal.':'; no near-surface inversion signal.'}`));
+  }
+  if(station.anchored_snapshot){
+    const e=station.anchored_snapshot.evaluation;
+    const status=line(`Station-anchored screening: ${e.multi_height_status}. ${e.headline_reason}`);
+    status.className=`station-status ${e.multi_height_status}`;
+    lines.push(status,line('Uses the measured ground reading with the model’s vertical differences for 30 ft. Not a measured 30 ft reading and not the recorded decision above.','small'));
+  }
+  box.replaceChildren(...lines);
 }
 function renderForecast() {
+  renderStationCheck();
   const forecastZone=weatherForecast?.time_zone??timeZone;
   validateForecast(forecast,intervalMinutes);
   const replayForecast=document.body.classList.contains('judge-forecast') && !weatherForecast;
@@ -484,7 +523,7 @@ async function requestOrchardForecast({showLoading=true}={}) {
   try {
     let cache;
     try{cache=window.localStorage;}catch{}
-    const result=await loadOrchardForecast(id,profile,{cache,signal:request.signal});
+    const result=await loadOrchardForecast(id,profile,{cache,signal:request.signal,stationMemo});
     if(request.signal.aborted||token!==forecastRequestId||$('weather-location').value!==id)return;
     if(mode!=='demo'&&mode!=='unavailable'&&mode!=='forecast')return;
     if(result.source==='synthetic'&&mode!=='demo'){

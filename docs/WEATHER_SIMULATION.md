@@ -33,3 +33,33 @@ The project freshness policy is **maximum 6 hours since issuance**, using an exp
 The city-specific cache stores `issued_at`, `issuance_source`, and `fetched_at` separately. Fallback reevaluates the **original issue age** at every access; a cache read does not renew the issue time. Legacy cache entries without verifiable issuance are not eligible. A failed live NWS request uses a qualified cached NWS source when available; otherwise the service returns `source: 'synthetic'` only for the explicit local simulator. The normal production dashboard refuses synthetic fallback, shows an unavailable state, and never displays synthetic values as observations.
 
 The returned `issuance_age_minutes` is the age at the caller's supplied `nowMs`; it is recomputed on every fetch. The UI displays issuance and retrieval independently. A previously displayed forecast may be kept on a transient refresh failure only until its original issuance expires, after which the dashboard fails closed. Older records remain in local storage but are ineligible for use after expiry.
+
+## AZMET station check (Arizona locations)
+
+Six Arizona forecast locations sit at [AZMET](https://azmet.arizona.edu/) stations: Yuma Valley (`az02`), Yuma North Gila (`az14`), Roll (`az24`), Maricopa (`az06`), Safford (`az04`), and Willcox Bench (`az39`). For these, `loadOrchardForecast` also requests the station's latest 15-minute observation and returns it as `station`, next to the NWS forecast. `frontend/azmet.js` holds the adapter.
+
+```js
+const { station, station_error } = await loadOrchardForecast('yuma_valley', profile, { stationMemo: new Map() });
+// station.measured            reading from the station, in the shared reading shape
+// station.modeled_ground      the NWS-modeled ground estimate for the same hour
+// station.model_minus_station temperature and wind differences
+// station.near_surface_gradient_f  4.9 ft minus 1 ft air temperature, or null
+// station.anchored_snapshot   evaluated snapshot: measured ground + modeled vertical differences
+```
+
+What the station measures, from AZMET's published metadata: air temperature and relative humidity at 1.5 m (4.9 ft), and wind speed and direction at 3.0 m (9.8 ft). The adapter uses the two-minute sustained wind. Some stations, currently the Yuma-area ones, also report air temperature at 0.3 m (1 ft); where present, the 4.9 ft minus 1 ft difference is shown as a measured near-surface gradient. It is not fed to the decision engine, because the engine's inversion thresholds are defined for 5 ft and 30 ft.
+
+Limits to keep in view:
+
+- No AZMET station measures anything at 30 ft. The station check does not turn the 30 ft estimate into a measurement.
+- The station-anchored screening takes the measured ground reading and applies only the model's vertical differences (temperature gradient and wind ratio) to get 30 ft values. It is shown for comparison. The recorded, audited decision remains the NWS-modeled screening.
+- Station wind is measured at 9.8 ft and is used as the ground-level wind without a height correction.
+- AZMET timestamps carry no zone. They are Arizona local time, which is MST (UTC−7) all year; this was confirmed against the live feed, not stated in the variable documentation. Wind direction is treated as the bearing the wind comes from.
+- Rows flagged `meta_needs_review`, or with missing temperature, humidity, or wind (negative sentinel values), are rejected rather than filled in.
+- Freshness is project policy: an observation more than 45 minutes old, or more than 5 minutes in the future, is not shown. With `stationMemo`, a station is requested at most every 5 minutes (failures retry after 1 minute), since the dashboard refreshes the forecast every 30 seconds.
+- A station failure never fails the forecast; `station` is `null` and `station_error` holds the reason. Offline synthetic rows are never compared with a station.
+
+Station coordinates are the two-decimal values AZMET publishes on each station's metadata page. This is the first dataset taken from the candidate list in issue #35.
+
+- [AZMET data variables](https://azmet.arizona.edu/about/data-variables)
+- [AZMET API](https://api.azmet.arizona.edu/)

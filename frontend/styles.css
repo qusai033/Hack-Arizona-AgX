@@ -177,3 +177,12 @@ body{padding-bottom:130px}
   .source-info .mode-link{font-size:11px;padding:8px 9px}
   #session-production-notice{padding:12px;font-size:12px}
 }
+
+.station-check{margin:14px 0 4px;padding:14px 16px;border:1px solid var(--line);border-left:4px solid var(--green);border-radius:10px;background:white;font-size:13px;line-height:1.5}
+.station-check h3{margin:0 0 6px;font-size:13px;letter-spacing:.02em}
+.station-check p{margin:4px 0}
+.station-check small{display:block;margin-top:2px;color:var(--muted)}
+.station-check .station-status{font-weight:700}
+.station-check .station-status.GO{color:var(--green)}
+.station-check .station-status.CAUTION{color:var(--amber)}
+.station-check .station-status.STOP{color:var(--red)}

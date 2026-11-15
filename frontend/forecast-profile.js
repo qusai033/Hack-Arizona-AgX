@@ -29,7 +29,10 @@ export function reevaluateForecastModel(model, profile, nowMs=Date.now()) {
     if(failure)throw new Error('Profile re-evaluation failed: '+failure.explanation);
     return next;
   });
-  return {...model,snapshots,window:forecastWindow(snapshots,nowMs,model.time_zone)};
+  // The AZMET station check's anchored screening follows the same selected profile.
+  const station=model.station?.anchored_snapshot?
+    {station:{...model.station,anchored_snapshot:evaluateDemo(model.station.anchored_snapshot,profile)}}:{};
+  return {...model,...station,snapshots,window:forecastWindow(snapshots,nowMs,model.time_zone)};
 }
 
 /** First still-valid period, or the earliest available period for the

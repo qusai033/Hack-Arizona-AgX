@@ -1,8 +1,11 @@
 import { evaluateSnapshot, createSession, startSpray, finishSpray, getProfile } from './engine/index.js';
 import { nextWindow, formatTime, validateForecast } from './timeline.js';
+import { loadAzmetObservation, AZMET_HEIGHTS } from './azmet.js';
 
 /** Stable city IDs shared by the selector, NWS fetches, cache, and audit source labels.
- * Coordinates locate city centers, not verified orchard sensor installations.
+ * California coordinates locate city centers, not verified orchard sensor installations.
+ * Arizona entries sit at an AZMET station (published coordinates) and name it in
+ * `azmet_station`, so the regional forecast can be checked against that station.
  */
 export const locations = Object.freeze({
   fresno: Object.freeze({label:'Fresno, CA',latitude:36.7378,longitude:-119.7871,zone:'America/Los_Angeles',block:'Fresno, CA · forecast area'}),
@@ -10,7 +13,13 @@ export const locations = Object.freeze({
   merced: Object.freeze({label:'Merced, CA',latitude:37.3022,longitude:-120.4830,zone:'America/Los_Angeles',block:'Merced, CA · forecast area'}),
   bakersfield: Object.freeze({label:'Bakersfield, CA',latitude:35.3733,longitude:-119.0187,zone:'America/Los_Angeles',block:'Bakersfield, CA · forecast area'}),
   chico: Object.freeze({label:'Chico, CA',latitude:39.7285,longitude:-121.8375,zone:'America/Los_Angeles',block:'Chico, CA · forecast area'}),
-  yuba_city: Object.freeze({label:'Yuba City, CA',latitude:39.1404,longitude:-121.6169,zone:'America/Los_Angeles',block:'Yuba City, CA · forecast area'})
+  yuba_city: Object.freeze({label:'Yuba City, CA',latitude:39.1404,longitude:-121.6169,zone:'America/Los_Angeles',block:'Yuba City, CA · forecast area'}),
+  yuma_valley: Object.freeze({label:'Yuma Valley, AZ',latitude:32.71,longitude:-114.7,zone:'America/Phoenix',block:'Yuma Valley, AZ · forecast area',azmet_station:'az02'}),
+  yuma_north_gila: Object.freeze({label:'Yuma North Gila, AZ',latitude:32.78,longitude:-114.52,zone:'America/Phoenix',block:'Yuma North Gila, AZ · forecast area',azmet_station:'az14'}),
+  roll: Object.freeze({label:'Roll, AZ',latitude:32.76,longitude:-113.97,zone:'America/Phoenix',block:'Roll, AZ · forecast area',azmet_station:'az24'}),
+  maricopa: Object.freeze({label:'Maricopa, AZ',latitude:33.07,longitude:-111.97,zone:'America/Phoenix',block:'Maricopa, AZ · forecast area',azmet_station:'az06'}),
+  safford: Object.freeze({label:'Safford, AZ',latitude:32.81,longitude:-109.68,zone:'America/Phoenix',block:'Safford, AZ · forecast area',azmet_station:'az04'}),
+  willcox_bench: Object.freeze({label:'Willcox Bench, AZ',latitude:32.12,longitude:-109.71,zone:'America/Phoenix',block:'Willcox Bench, AZ · forecast area',azmet_station:'az39'})
 });
 const compass = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -203,10 +212,47 @@ export function forecastWindow(snapshots, nowMs, zone) {
     start_iso:window?new Date(window.start).toISOString():null,end_iso:window?new Date(window.end).toISOString():null};
 }
 
-/** One source envelope per request; each snapshot conforms to the shared contract. */
-export async function loadOrchardForecast(id, profile, {nowMs=Date.now(), fetchImpl=fetch, cache, signal}={}) {
+/** Measured AZMET ground observation set against the regional model for the same hour.
+ * The station anchors the ground reading; the model supplies only the vertical
+ * differences (temperature gradient and wind ratio). The 30 ft values therefore stay
+ * modeled, and the station's wind is measured at 9.8 ft, not 5 ft.
+ */
+export function stationCheck(observation, rows, source, location, profile) {
+  const measured=reading(observation.temp_f,observation.wind_speed_mph,observation.wind_dir_deg,observation.humidity_pct);
+  const observedMs=Date.parse(observation.observed_at);
+  // Offline synthetic rows are not a forecast, so they are never compared with a station.
+  const row=source==='synthetic'?null:rows.find(candidate=>{
+    const periodStart=Date.parse(candidate.timestamp);
+    return observedMs>=periodStart && observedMs<periodStart+hour;
+  });
+  let comparison={model_period_at:null,modeled_ground:null,model_minus_station:null,anchored_snapshot:null};
+  if(row){
+    const {ground_5ft:ground,canopy_30ft:upper}=estimateLayers(row,location);
+    const upperTemp=measured.temp_f+(upper.temp_f-ground.temp_f);
+    const upperWind=ground.wind_speed_mph>0?measured.wind_speed_mph*upper.wind_speed_mph/ground.wind_speed_mph:measured.wind_speed_mph;
+    const upperHumidity=clamp(measured.humidity_pct*vaporPressure((measured.temp_f-32)*5/9)/vaporPressure((upperTemp-32)*5/9),0,100);
+    comparison={model_period_at:row.timestamp,modeled_ground:ground,
+      model_minus_station:{temp_f:ground.temp_f-measured.temp_f,wind_speed_mph:ground.wind_speed_mph-measured.wind_speed_mph},
+      anchored_snapshot:evaluateSnapshot({timestamp:observation.observed_at,scenario_name:'AZMET measured ground · modeled 30 ft',
+        orchard_block:location.block,readings:{ground_5ft:measured,canopy_30ft:reading(upperTemp,upperWind,measured.wind_dir_deg,upperHumidity)},
+        pesticide_profile:profile})};
+  }
+  return {source:'azmet',station_id:observation.station_id,station_name:observation.station_name,
+    observed_at:observation.observed_at,age_minutes:observation.age_minutes,measured,heights:AZMET_HEIGHTS,
+    // 4.9 ft minus 1 ft air temperature where the station has the low sensor; positive means warmer above.
+    near_surface_gradient_f:observation.temp_1ft_f===null?null:observation.temp_f-observation.temp_1ft_f,
+    ...comparison};
+}
+
+/** One source envelope per request; each snapshot conforms to the shared contract.
+ * Locations with an AZMET station also return `station` (or `station_error`); a station
+ * failure never fails the forecast. Pass a Map as `stationMemo` to limit station requests.
+ */
+export async function loadOrchardForecast(id, profile, {nowMs=Date.now(), fetchImpl=fetch, cache, signal, stationMemo}={}) {
   if(!Object.hasOwn(locations,id)||!Number.isFinite(nowMs)) throw new TypeError('Invalid location or clock');
   const location=locations[id], start=Math.floor(nowMs/hour)*hour;
+  const stationRequest=location.azmet_station?
+    loadAzmetObservation(location.azmet_station,{nowMs,fetchImpl,signal,memo:stationMemo}).then(observation=>({observation}),error=>({error})):null;
   const key=`canopyguard-nws-v1-${id}`;
   const covers = rows => Array.isArray(rows)&&rows.length===24&&rows.every((row,index)=>
     Date.parse(row.timestamp)===start+index*hour && Number.isFinite(row.temperature) &&
@@ -254,6 +300,14 @@ export async function loadOrchardForecast(id, profile, {nowMs=Date.now(), fetchI
   }
   const snapshots=rows.map(row=>evaluateSnapshot({timestamp:row.timestamp,scenario_name:`${source} · modeled orchard heights`,orchard_block:location.block,readings:estimateLayers(row,location),pesticide_profile:profile}));
   validateForecast(snapshots,60);
-  return {location_id:id,location_label:location.label,source,fetched_at,issued_at,issuance_source,issuance_age_minutes,error,time_zone:location.zone,interval_minutes:60,snapshots,window:forecastWindow(snapshots,nowMs,location.zone)};
+  let station=null, station_error=null;
+  if(stationRequest){
+    const result=await stationRequest;
+    if(result.error){
+      if(signal?.aborted)throw result.error;
+      station_error=result.error.message;
+    }else station=stationCheck(result.observation,rows,source,location,profile);
+  }
+  return {location_id:id,location_label:location.label,station,station_error,source,fetched_at,issued_at,issuance_source,issuance_age_minutes,error,time_zone:location.zone,interval_minutes:60,snapshots,window:forecastWindow(snapshots,nowMs,location.zone)};
 }
 

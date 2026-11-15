@@ -342,7 +342,7 @@ test('four-step judge walkthrough keeps its anchored forecast and filtered audit
   expect(errors).toEqual([]);
 });
 
-test('production startup accepts a controlled fresh NWS response and exposes all six cities', async ({ page }) => {
+test('production startup accepts a controlled fresh NWS response and exposes every forecast location', async ({ page }) => {
   const blocked = await isolateNetwork(page, ['https://api.weather.gov']);
   const errors = captureErrors(page);
   let hourlyRequests = 0;
@@ -364,8 +364,10 @@ test('production startup accepts a controlled fresh NWS response and exposes all
   await expect(page.locator('#forecast #weather-location')).toBeVisible();
   await expect(page.locator('#forecast #weather-fetch')).toBeVisible();
   await expect(page.locator('#weather-location option')).toHaveText([
-    'Fresno, CA', 'Modesto, CA', 'Merced, CA', 'Bakersfield, CA', 'Chico, CA', 'Yuba City, CA'
+    'Fresno, CA', 'Modesto, CA', 'Merced, CA', 'Bakersfield, CA', 'Chico, CA', 'Yuba City, CA',
+    'Yuma Valley, AZ', 'Yuma North Gila, AZ', 'Roll, AZ', 'Maricopa, AZ', 'Safford, AZ', 'Willcox Bench, AZ'
   ]);
+  await expect(page.locator('#station-check')).toBeHidden();
   await page.getByLabel('Forecast city').selectOption('modesto');
   await expect(page.locator('#weather-network')).toContainText('Modesto, CA: NWS model retrieved');
   const beforeRefresh = hourlyRequests;
@@ -375,6 +377,60 @@ test('production startup accepts a controlled fresh NWS response and exposes all
   await expect(page.locator('#decision-title')).not.toContainText('DATA UNAVAILABLE');
   expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
+});
+
+test('Arizona locations show the AZMET station check without changing the modeled decision', async ({ page }) => {
+  const blocked = await isolateNetwork(page, ['https://api.weather.gov', 'https://api.azmet.arizona.edu']);
+  const errors = captureErrors(page);
+  await stubNws(page, {
+    points: route => route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(pointResponse()) }),
+    hourly: route => route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(hourlyResponse()) })
+  });
+  const stationRequests = [];
+  await page.route('https://api.azmet.arizona.edu/**', route => {
+    const url = new URL(route.request().url());
+    stationRequests.push(url.pathname);
+    const id = url.pathname.split('/')[4];
+    if (id !== 'az02') return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+    // AZMET timestamps are Arizona local time (MST, UTC-7) without a zone.
+    const datetime = new Date(Date.now() - 5 * 60_000 - 7 * 3_600_000).toISOString().slice(0, 19).replace('T', ' ');
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [{
+      datetime, meta_needs_review: '0', meta_station_id: 'az02', meta_station_name: 'Yuma Valley',
+      relative_humidity: '40', temp_airC: '25.0', temp_air_30cmC: '23.0',
+      wind_2min_spd_mean_mps: '2.0', wind_2min_vector_dir: '286'
+    }] }) });
+  });
+  await page.goto('/');
+  await expect(page.locator('#weather-network')).toContainText('Fresno, CA: NWS model retrieved', { timeout: 20000 });
+  expect(stationRequests).toEqual([]);
+
+  await page.getByLabel('Forecast city').selectOption('yuma_valley');
+  const check = page.locator('#station-check');
+  await expect(check).toContainText('AZMET station check · Yuma Valley (az02)');
+  await expect(check).toContainText('77.0°F and 40% RH at 4.9 ft · 4.5 mph from WNW at 9.8 ft');
+  await expect(check).toContainText('NWS model for this hour estimates');
+  await expect(check).toContainText('air is 3.6°F warmer above — a measured near-surface inversion signal');
+  await expect(check).toContainText('Station-anchored screening:');
+  await expect(check).toContainText('not the recorded decision');
+  // The audited decision stays the NWS-modeled screening.
+  await expect(page.locator('#source-badge')).toContainText('NWS FORECAST · MODELED HEIGHTS');
+  await expect(page.locator('#decision-label')).toContainText('MODELED FORECAST SCREENING');
+  await expect(page.locator('#block-name')).toHaveText('Yuma Valley, AZ · forecast area');
+  expect(stationRequests.every(path => /^\/v1\/observations\/15min\/az02\/\d{4}-\d\d-\d\dT\d\d:\d\d\/\*$/.test(decodeURIComponent(path)))).toBe(true);
+
+  // A station outage leaves the forecast in place and says so.
+  await page.getByLabel('Forecast city').selectOption('roll');
+  await expect(page.locator('#weather-network')).toContainText('Roll, AZ: NWS model retrieved');
+  await expect(check).toContainText('Station observation unavailable: AZMET HTTP 503');
+  await expect(page.locator('#decision-title')).not.toContainText('DATA UNAVAILABLE');
+
+  await page.getByLabel('Forecast city').selectOption('fresno');
+  await expect(page.locator('#weather-network')).toContainText('Fresno, CA: NWS model retrieved');
+  await expect(check).toBeHidden();
+  expect(blocked).toEqual([]);
+  // The browser itself logs the deliberate 503 from the station stub; nothing else may be logged.
+  expect(errors.filter(message => !message.includes('503'))).toEqual([]);
+  expect(errors.length).toBeGreaterThan(0);
 });
 
 test('production startup fails closed for stale NWS issuance and for unavailable NWS', async ({ page }) => {
