@@ -56,6 +56,25 @@ profile changes and manual snapshots retain distinct event IDs, and clock change
 refresh forecast windows. See [docs/TEAM4_CONTROLLER.md](docs/TEAM4_CONTROLLER.md)
 for the shared event boundary and judge-replay behavior.
 
+## Original-spec evaluation
+
+The final canonical handoff has a separate Playwright acceptance audit. It builds
+and loads the actual dashboard, runs the existing browser regressions, and compares
+scenario inputs/results, numeric boundaries, disclosures, clock/logging behavior,
+and forecast freshness against independently transcribed expectations.
+
+```sh
+npm run test:spec
+npm run report:spec
+```
+
+Unmet requirements produce a nonzero exit and a report; they are not marked as
+expected failures. Run the report command even when the evaluation fails.
+See [docs/SPEC_EVALUATION.md](docs/SPEC_EVALUATION.md) for requirements mapping,
+later project decisions, and coverage limits. `npm run test:spec:ui` opens the
+interactive test runner. The GitHub **Specification evaluation** workflow can also
+be run manually and retains its report on failure.
+
 ## Decision engine
 
 ```js
@@ -77,6 +96,10 @@ Use `http://localhost:5173/?mode=demo` for the explicitly simulated hackathon wa
 
 The default location selection, startup request, 30-second refresh, stale-response rejection, and source display belong to `frontend/app.js`. Forecast location metadata and city-scoped persistence live in `frontend/weather.js`. These modifications do not validate the forecasting model or pesticide label compliance.
 
+## AZMET station check (Arizona)
+
+The forecast location list also includes six Arizona sites at AZMET weather stations. For those, the forecast panel shows the station's latest measured observation beside the NWS-modeled ground estimate, the difference between them, and a station-anchored screening. This is a comparison only: the 30 ft values remain modeled and the recorded decision is unchanged. See [docs/WEATHER_SIMULATION.md](docs/WEATHER_SIMULATION.md#azmet-station-check-arizona-locations).
+
 ## Audit evidence schema (v2)
 
 New audit records preserve the complete source snapshot, event ID, full treatment session and known evaluation context. Built-in demo/forecast records include the actual engine version, effective thresholds, diagnostics, and explicit recording versus observation/forecast-valid times; external/imported evaluations are labeled unverified rather than falsely attributed to the built-in engine. Existing v1 records stay readable with `evidence: null`, without invented historical metadata.
@@ -95,3 +118,7 @@ The NWS view models both heights from regional conditions: **no field sensor dat
 ## Standalone Arizona weather viewer
 
 A separate, general-purpose sample-data viewer is available at `http://localhost:5173/weather-viewer.html` after `npm run dev`. It displays clearly labeled synthetic example records, source timestamps, coordinates, and basic data-quality checks. It is not a live weather feed, makes no interpolated estimates, and is not connected to the CanopyGuard evaluator. See [docs/ARIZONA_WEATHER_VIEWER.md](docs/ARIZONA_WEATHER_VIEWER.md).
+
+## Explicit evaluation-time evidence (Issue #46)
+
+The built-in demo controller captures an explicit `evaluationTimeMs` when it creates each evaluated snapshot; in demo mode this is the independent deterministic simulation clock. NWS forecasting and profile re-screening capture the evaluation invocation clock separately from forecast valid, issuance, and retrieval times. The application threads that exact context into version-2 audit evidence, persistence, `Evaluation UTC` CSV, and activity/print views. It never substitutes action `recorded_at` for the time supplied to the evaluator. Historical or externally evaluated records retain unknown evaluation times rather than invented timestamps. See [docs/AUDIT_EVIDENCE.md](docs/AUDIT_EVIDENCE.md) and `tests/evaluation-time.test.mjs`.

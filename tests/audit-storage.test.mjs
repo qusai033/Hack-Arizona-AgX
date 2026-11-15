@@ -120,7 +120,7 @@ test('reset removes only explicit current-run demo records and preserves every o
   }
   map.set('unrelated-preference','keep');
   assert.match(auditCSV(log.list(),'UTC'),/Demo run ID/);
-  assert.match(auditCSV(log.list(),'UTC'),/"run-a"\r\n/);
+  assert.match(auditCSV(log.list(),'UTC'),/"run-a","2026-11-15"\r\n/);
   assert.deepEqual(log.resetDemoRun('run-a').removed,['own']);
   assert.deepEqual(createAuditLog(storage).list().map(r=>r.id),['other','legacy','live','import','forecast']);
   assert.equal(map.get('unrelated-preference'),'keep');

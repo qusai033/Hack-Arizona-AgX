@@ -38,6 +38,16 @@ it does not reset that simulation. Switching to live/imported data stops playbac
 `frontend/events.js` creates `{event_id, event_type, recorded_at, payload}` at the
 user-action or scheduled-step boundary. `recorded_at` is real UTC action time,
 distinct from the snapshot's simulated observation time. The payload is copied.
+
+The controller supplies `evaluationContext.evaluationTimeMs` to the engine while
+creating a new result. Demo evaluation time is the deterministic `clock_iso`,
+**not** the later `recorded_at` of an action or the browser clock. Manual
+snapshots recorded while paused retain the same simulated evaluation instant,
+but still have separate event IDs/recording times. NWS model screening uses the
+explicit invocation clock, independent of a forecast period's valid time and
+NWS issuance/retrieval metadata. Version-2 evidence, CSV, and the activity
+report show those roles separately. Imported/live results with no verified
+external evaluation context and historical records keep `evaluated_at=null`.
 Tests can inject the ID and recording clock.
 
 ```js

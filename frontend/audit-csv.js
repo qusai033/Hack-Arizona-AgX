@@ -1,4 +1,5 @@
 import { deltas } from './contract.js';
+import { recordDay } from './audit-calendar.js';
 
 export const CSV_UNAVAILABLE = '[UNAVAILABLE]';
 const unavailable = value => value === undefined || value === null ? CSV_UNAVAILABLE : value;
@@ -21,6 +22,9 @@ const localTime = (timestamp, zone) => {
   } catch {
     return CSV_UNAVAILABLE;
   }
+};
+const observationDate = (record, zone) => {
+  try { return recordDay(record, zone); } catch { return CSV_UNAVAILABLE; }
 };
 const hiddenRisk = snapshot => snapshot.evaluation.caught_hidden_risk ??
   (snapshot.evaluation.single_station_5ft_status === 'GO' && snapshot.evaluation.multi_height_status === 'STOP');
@@ -56,7 +60,9 @@ const HEADERS = Object.freeze([
   // Complete machine-readable evidence. Historical absence is explicit, never inferred.
   'Session JSON', 'Snapshot JSON', 'Effective thresholds JSON', 'Effective profile JSON',
   'Evaluation JSON', 'Evaluation context JSON', 'Diagnostics JSON', 'Source provenance JSON',
-  'Timestamp evidence JSON', 'Audit evidence JSON', 'Demo run ID'
+  'Timestamp evidence JSON', 'Audit evidence JSON', 'Demo run ID',
+  // Calendar date the record is filed under in the daily history (see audit-calendar.js).
+  'Observation date'
 ]);
 
 /** Export every record passed by the caller. The UI applies its selected filter before
@@ -139,7 +145,8 @@ export function auditCSV(records, zone) {
       jsonEvidence(evidence, 'provenance'),
       jsonEvidence(evidence, 'times'),
       evidence == null ? CSV_UNAVAILABLE : JSON.stringify(evidence),
-      unavailable(record.demo_run_id)
+      unavailable(record.demo_run_id),
+      observationDate(record, zone)
     ];
   });
 

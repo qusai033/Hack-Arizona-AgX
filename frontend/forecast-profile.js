@@ -23,13 +23,16 @@ export function reevaluateForecastModel(model, profile, nowMs=Date.now()) {
     validateForecastIssuance({[model.issuance_source]:model.issued_at},nowMs);
   }
   const snapshots=model.snapshots.map(previous=>{
-    const next=evaluateDemo(previous,profile);
+    const next=evaluateDemo(previous,profile,undefined,nowMs);
     assertSnapshot(next);
     const failure=next.evaluation.triggered_rules.find(rule=>rule.code==='DATA_INVALID');
     if(failure)throw new Error('Profile re-evaluation failed: '+failure.explanation);
     return next;
   });
-  return {...model,snapshots,window:forecastWindow(snapshots,nowMs,model.time_zone)};
+  // The AZMET station check's anchored screening follows the same selected profile.
+  const station=model.station?.anchored_snapshot?
+    {station:{...model.station,anchored_snapshot:evaluateDemo(model.station.anchored_snapshot,profile,undefined,nowMs)}}:{};
+  return {...model,...station,evaluation_context:{evaluationTimeMs:nowMs},snapshots,window:forecastWindow(snapshots,nowMs,model.time_zone)};
 }
 
 /** First still-valid period, or the earliest available period for the

@@ -9,7 +9,10 @@
     "dev": "node scripts/serve.mjs",
     "evaluate": "node scripts/evaluate.mjs",
     "benchmark": "node scripts/benchmark.mjs",
-    "test:e2e": "npm run build && playwright test"
+    "test:e2e": "npm run build && playwright test",
+    "test:spec": "npm run build && playwright test --config playwright.spec.config.mjs",
+    "test:spec:ui": "npm run build && playwright test --config playwright.spec.config.mjs --ui",
+    "report:spec": "playwright show-report spec-report/html --host 127.0.0.1 --port 9323"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1"

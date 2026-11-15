@@ -342,7 +342,7 @@ test('four-step judge walkthrough keeps its anchored forecast and filtered audit
   expect(errors).toEqual([]);
 });
 
-test('production startup accepts a controlled fresh NWS response and exposes all six cities', async ({ page }) => {
+test('production startup accepts a controlled fresh NWS response and exposes every forecast location', async ({ page }) => {
   const blocked = await isolateNetwork(page, ['https://api.weather.gov']);
   const errors = captureErrors(page);
   let hourlyRequests = 0;
@@ -364,8 +364,10 @@ test('production startup accepts a controlled fresh NWS response and exposes all
   await expect(page.locator('#forecast #weather-location')).toBeVisible();
   await expect(page.locator('#forecast #weather-fetch')).toBeVisible();
   await expect(page.locator('#weather-location option')).toHaveText([
-    'Fresno, CA', 'Modesto, CA', 'Merced, CA', 'Bakersfield, CA', 'Chico, CA', 'Yuba City, CA'
+    'Fresno, CA', 'Modesto, CA', 'Merced, CA', 'Bakersfield, CA', 'Chico, CA', 'Yuba City, CA',
+    'Yuma Valley, AZ', 'Yuma North Gila, AZ', 'Roll, AZ', 'Maricopa, AZ', 'Safford, AZ', 'Willcox Bench, AZ'
   ]);
+  await expect(page.locator('#station-check')).toBeHidden();
   await page.getByLabel('Forecast city').selectOption('modesto');
   await expect(page.locator('#weather-network')).toContainText('Modesto, CA: NWS model retrieved');
   const beforeRefresh = hourlyRequests;
@@ -375,6 +377,60 @@ test('production startup accepts a controlled fresh NWS response and exposes all
   await expect(page.locator('#decision-title')).not.toContainText('DATA UNAVAILABLE');
   expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
+});
+
+test('Arizona locations show the AZMET station check without changing the modeled decision', async ({ page }) => {
+  const blocked = await isolateNetwork(page, ['https://api.weather.gov', 'https://api.azmet.arizona.edu']);
+  const errors = captureErrors(page);
+  await stubNws(page, {
+    points: route => route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(pointResponse()) }),
+    hourly: route => route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(hourlyResponse()) })
+  });
+  const stationRequests = [];
+  await page.route('https://api.azmet.arizona.edu/**', route => {
+    const url = new URL(route.request().url());
+    stationRequests.push(url.pathname);
+    const id = url.pathname.split('/')[4];
+    if (id !== 'az02') return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+    // AZMET timestamps are Arizona local time (MST, UTC-7) without a zone.
+    const datetime = new Date(Date.now() - 5 * 60_000 - 7 * 3_600_000).toISOString().slice(0, 19).replace('T', ' ');
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [{
+      datetime, meta_needs_review: '0', meta_station_id: 'az02', meta_station_name: 'Yuma Valley',
+      relative_humidity: '40', temp_airC: '25.0', temp_air_30cmC: '23.0',
+      wind_2min_spd_mean_mps: '2.0', wind_2min_vector_dir: '286'
+    }] }) });
+  });
+  await page.goto('/');
+  await expect(page.locator('#weather-network')).toContainText('Fresno, CA: NWS model retrieved', { timeout: 20000 });
+  expect(stationRequests).toEqual([]);
+
+  await page.getByLabel('Forecast city').selectOption('yuma_valley');
+  const check = page.locator('#station-check');
+  await expect(check).toContainText('AZMET station check · Yuma Valley (az02)');
+  await expect(check).toContainText('77.0°F and 40% RH at 4.9 ft · 4.5 mph from WNW at 9.8 ft');
+  await expect(check).toContainText('NWS model for this hour estimates');
+  await expect(check).toContainText('air is 3.6°F warmer above — a measured near-surface inversion signal');
+  await expect(check).toContainText('Station-anchored screening:');
+  await expect(check).toContainText('not the recorded decision');
+  // The audited decision stays the NWS-modeled screening.
+  await expect(page.locator('#source-badge')).toContainText('NWS FORECAST · MODELED HEIGHTS');
+  await expect(page.locator('#decision-label')).toContainText('MODELED FORECAST SCREENING');
+  await expect(page.locator('#block-name')).toHaveText('Yuma Valley, AZ · forecast area');
+  expect(stationRequests.every(path => /^\/v1\/observations\/15min\/az02\/\d{4}-\d\d-\d\dT\d\d:\d\d\/\*$/.test(decodeURIComponent(path)))).toBe(true);
+
+  // A station outage leaves the forecast in place and says so.
+  await page.getByLabel('Forecast city').selectOption('roll');
+  await expect(page.locator('#weather-network')).toContainText('Roll, AZ: NWS model retrieved');
+  await expect(check).toContainText('Station observation unavailable: AZMET HTTP 503');
+  await expect(page.locator('#decision-title')).not.toContainText('DATA UNAVAILABLE');
+
+  await page.getByLabel('Forecast city').selectOption('fresno');
+  await expect(page.locator('#weather-network')).toContainText('Fresno, CA: NWS model retrieved');
+  await expect(check).toBeHidden();
+  expect(blocked).toEqual([]);
+  // The browser itself logs the deliberate 503 from the station stub; nothing else may be logged.
+  expect(errors.filter(message => !message.includes('503'))).toEqual([]);
+  expect(errors.length).toBeGreaterThan(0);
 });
 
 test('production startup fails closed for stale NWS issuance and for unavailable NWS', async ({ page }) => {
@@ -517,6 +573,117 @@ test('visible links switch between production and interactive demo, revealing se
   await expect(page.locator('#session-start')).toBeEnabled();
   await page.locator('#session-start').click();
   await expect(page.locator('#session-state')).toContainText('SPRAYING');
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('audit calendar files records by day, follows the latest record, and scopes the CSV export', async ({ page }, testInfo) => {
+  const blocked = await isolateNetwork(page);
+  const errors = captureErrors(page);
+  await page.goto('/?mode=demo');
+  await expect(page.locator('#decision-title')).toContainText('DO NOT SPRAY');
+  await page.getByRole('button', { name: 'Record Snapshot', exact: true }).click();
+
+  const expected = await page.evaluate(async () => {
+    const { recordDay, groupByDay } = await import('/audit-calendar.js');
+    const rows = window.CanopyGuardAudit.list();
+    const day = recordDay(rows.at(-1), 'America/Los_Angeles');
+    return { day, count: groupByDay(rows, 'America/Los_Angeles').get(day).length };
+  });
+  // Without a manual choice the calendar opens on the day of the most recent record (the demo clock's day).
+  const selected = page.locator('#cal-grid .cal-day.selected');
+  await expect(selected).toHaveCount(1);
+  await expect(selected).toHaveAttribute('data-day', expected.day);
+  await expect(selected.locator('.cal-mark')).toHaveText(String(expected.count));
+  await expect(page.locator('#audit-day')).toContainText('Worst decision: STOP');
+  await expect(page.locator('#audit-day')).toContainText('Precipitation');
+  await expect(page.locator('#audit-rows tr')).toHaveCount(expected.count);
+  await expect(page.locator('#audit-count')).toContainText('1 day with data');
+
+  // A day without records says so and is never filled in.
+  await page.getByRole('button', { name: 'Next day', exact: true }).click();
+  await expect(page.locator('#audit-day')).toContainText('No records for this date.');
+  await expect(page.locator('#audit-rows .audit-empty')).toHaveCount(1);
+  await page.getByRole('button', { name: /Go to latest recorded day/ }).click();
+  await expect(page.locator('#cal-grid .cal-day.selected')).toHaveAttribute('data-day', expected.day);
+
+  // Ticking a day enables the checked-days scope.
+  await expect(page.locator('#audit-export-scope option[value="selected"]')).toBeDisabled();
+  await page.locator('#cal-grid .cal-day.selected .cal-check').check();
+  await expect(page.locator('#audit-export-scope option[value="selected"]')).toBeEnabled();
+  await expect(page.locator('#cal-selected-count')).toHaveText('1 day ticked');
+
+  await page.locator('#audit-export-scope').selectOption('day');
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export PCA Audit Log (CSV)', exact: true }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(`canopyguard-pca-audit-${expected.day}.csv`);
+  const csv = parseCsv(await saveDownload(download, testInfo, 'audit-day.csv'));
+  const dateColumn = csv[0].indexOf('Observation date');
+  expect(dateColumn).toBe(csv[0].length - 1);
+  expect(csv.length - 1).toBe(expected.count);
+  for (const row of csv.slice(1)) expect(row[dateColumn]).toBe(expected.day);
+
+  await page.setViewportSize({ width: 390, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+
+test('SPEC-EVALUATION-TIME: paused demo records capture evaluation clock without rewriting action time',async({page},testInfo)=>{
+  const blocked=await isolateNetwork(page);
+  const errors=captureErrors(page);
+  await page.goto('/?mode=demo');
+  const initial=await page.evaluate(()=>window.CanopyGuardAudit.list().at(-1));
+  expect(initial.evidence.times.evaluated_at).toBe(initial.snapshot.timestamp);
+  expect(initial.evidence.evaluation_context.evaluationTimeMs).toBe(Date.parse(initial.snapshot.timestamp));
+  await page.getByRole('button',{name:'Record Snapshot',exact:true}).click();
+  await page.getByRole('button',{name:'Record Snapshot',exact:true}).click();
+  const rows=await page.evaluate(()=>window.CanopyGuardAudit.list().filter(row=>row.event==='MANUAL_SNAPSHOT_RECORDED').slice(-2));
+  expect(rows).toHaveLength(2);
+  expect(rows[0].id).not.toBe(rows[1].id);
+  for(const row of rows){
+    expect(row.evidence.times.evaluated_at).toBe(initial.snapshot.timestamp);
+    expect(row.evidence.times.recorded_at).toBe(row.recorded_at);
+    expect(row.evidence.times.evaluated_at).not.toBe(row.recorded_at);
+    expect(row.evidence.evaluation_context.evaluationTimeMs).toBe(Date.parse(row.evidence.times.evaluated_at));
+  }
+  const downloadPromise=page.waitForEvent('download');
+  await page.getByRole('button',{name:'Export PCA Audit Log (CSV)',exact:true}).click();
+  const csv=parseCsv(await saveDownload(await downloadPromise,testInfo,'evaluation-time-demo.csv'));
+  const header=csv[0],idCol=header.indexOf('Log ID'),timeCol=header.indexOf('Evaluation UTC');
+  expect(timeCol).toBeGreaterThanOrEqual(0);
+  for(const row of rows)expect(csv.find(cells=>cells[idCol]===row.id)?.[timeCol]).toBe(row.evidence.times.evaluated_at);
+  await page.reload();
+  await page.waitForFunction(ids=>ids.every(id=>window.CanopyGuardAudit.list().some(r=>r.id===id)),rows.map(x=>x.id));
+  const restored=await page.evaluate(ids=>window.CanopyGuardAudit.list().filter(row=>ids.includes(row.id)),rows.map(x=>x.id));
+  expect(restored.map(r=>r.evidence.times.evaluated_at)).toEqual(rows.map(r=>r.evidence.times.evaluated_at));
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('forecast evaluation timestamp is separate from hourly valid, NWS issue, fetch, and record times',async({page})=>{
+  const blocked=await isolateNetwork(page,['https://api.weather.gov']);
+  const errors=captureErrors(page);
+  await stubNws(page,{
+    points:route=>route.fulfill({status:200,contentType:'application/geo+json',body:JSON.stringify(pointResponse())}),
+    hourly:route=>route.fulfill({status:200,contentType:'application/geo+json',body:JSON.stringify(hourlyResponse())})
+  });
+  await page.goto('/');
+  await expect(page.locator('#weather-network')).toContainText('Fresno, CA: NWS model retrieved',{timeout:20000});
+  const first=await page.evaluate(()=>window.CanopyGuardAudit.list().filter(r=>r.source==='forecast').at(-1));
+  expect(first).toBeTruthy();
+  expect(first.evidence.evaluation_context.evaluationTimeMs).toBe(Date.parse(first.evidence.times.evaluated_at));
+  expect(first.evidence.times.evaluated_at).not.toBe(first.evidence.times.forecast_valid_at);
+  expect(first.evidence.times.evaluated_at).not.toBe(first.evidence.provenance.issued_at);
+  expect(first.evidence.times.recorded_at).toBe(first.recorded_at);
+  await page.locator('#profile-preset').selectOption('volatile_formulation');
+  const latest=await page.evaluate(()=>window.CanopyGuardAudit.list().filter(r=>r.source==='forecast'&&r.event==='PROFILE_CHANGED').at(-1));
+  expect(latest).toBeTruthy();
+  expect(latest.evidence.reproduced_with_current_engine).toBe(true);
+  expect(latest.evidence.evaluation_context.evaluationTimeMs).toBe(Date.parse(latest.evidence.times.evaluated_at));
+  expect(latest.evidence.provenance.location_id).toBe('fresno');
   expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
 });
