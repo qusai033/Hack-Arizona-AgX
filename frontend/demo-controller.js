@@ -41,11 +41,14 @@ function evaluateState(state) {
     }
     session_source = 'replay';
   }
-  const snapshot = evaluateSnapshot(input, session ? {session} : {});
+  // The result is evaluated against the deterministic simulation clock.
+  // This time is not the later wall-clock action recording time.
+  const evaluationContext = {evaluationTimeMs: Date.parse(state.clock_iso), ...(session ? {session} : {})};
+  const snapshot = evaluateSnapshot(input, evaluationContext);
   if (snapshot.evaluation.triggered_rules.some(rule => rule.code === 'DATA_INVALID')) {
     throw new Error(snapshot.evaluation.triggered_rules.find(rule => rule.code === 'DATA_INVALID').explanation);
   }
-  return {...state, session, session_source, snapshot};
+  return {...state, session, session_source, snapshot, evaluationContext};
 }
 
 export function createDemoState({scenario: name = 'trap', clock_iso = INITIAL_SIM_TIME, profile, demo_run_id = null} = {}) {

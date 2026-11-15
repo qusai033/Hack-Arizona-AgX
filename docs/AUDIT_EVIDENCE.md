@@ -19,7 +19,9 @@ Issue #9 adds a reproducible **application-level append-only** audit evidence en
 | `evidence.provenance` | Source metadata when known; forecast entries include selected city, NWS vs cached source, issuance/retrieval time and timezone |
 | `evidence.times` | Distinguishes `recorded_at`, `snapshot_at`, `simulation_clock_at`, `forecast_valid_at`, `observation_at`, and `evaluated_at` |
 
-The current application **does not separately capture an evaluation-execution timestamp**, so `evidence.times.evaluated_at` remains `null`; it is never inferred from the event or forecast-valid timestamp. Demo time is explicitly identified as a simulation clock, forecast time as an hourly period's valid time, and source retrieval/issuance metadata as a separate provenance value.
+The integrated demo and NWS evaluators now supply `evaluation_context.evaluationTimeMs` **at the evaluation boundary**. Its exact ISO conversion is saved as `evidence.times.evaluated_at`; it is never inferred from the later event recording timestamp. Demo evaluations use the deterministic simulation clock (so demo evaluation time and simulated observation time refer to the same instant), while NWS screening evaluates future-valid periods at the separately supplied screening time. Source issuance, retrieval, forecast valid time, and real action time remain distinct.
+
+When an old v1/v2 record lacks explicit time context, `evaluated_at` remains `null` without backfill. Externally evaluated (`live`/`imported`) records also leave it unknown because CanopyGuard has no verified external evaluator-time contract. Built-in v2 readers verify that a supplied `evaluationTimeMs` exactly matches `times.evaluated_at`; mismatches are treated as malformed evidence.
 
 ## Replay and science boundaries
 

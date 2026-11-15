@@ -629,3 +629,61 @@ test('audit calendar files records by day, follows the latest record, and scopes
   expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+
+test('SPEC-EVALUATION-TIME: paused demo records capture evaluation clock without rewriting action time',async({page},testInfo)=>{
+  const blocked=await isolateNetwork(page);
+  const errors=captureErrors(page);
+  await page.goto('/?mode=demo');
+  const initial=await page.evaluate(()=>window.CanopyGuardAudit.list().at(-1));
+  expect(initial.evidence.times.evaluated_at).toBe(initial.snapshot.timestamp);
+  expect(initial.evidence.evaluation_context.evaluationTimeMs).toBe(Date.parse(initial.snapshot.timestamp));
+  await page.getByRole('button',{name:'Record Snapshot',exact:true}).click();
+  await page.getByRole('button',{name:'Record Snapshot',exact:true}).click();
+  const rows=await page.evaluate(()=>window.CanopyGuardAudit.list().filter(row=>row.event==='MANUAL_SNAPSHOT_RECORDED').slice(-2));
+  expect(rows).toHaveLength(2);
+  expect(rows[0].id).not.toBe(rows[1].id);
+  for(const row of rows){
+    expect(row.evidence.times.evaluated_at).toBe(initial.snapshot.timestamp);
+    expect(row.evidence.times.recorded_at).toBe(row.recorded_at);
+    expect(row.evidence.times.evaluated_at).not.toBe(row.recorded_at);
+    expect(row.evidence.evaluation_context.evaluationTimeMs).toBe(Date.parse(row.evidence.times.evaluated_at));
+  }
+  const downloadPromise=page.waitForEvent('download');
+  await page.getByRole('button',{name:'Export PCA Audit Log (CSV)',exact:true}).click();
+  const csv=parseCsv(await saveDownload(await downloadPromise,testInfo,'evaluation-time-demo.csv'));
+  const header=csv[0],idCol=header.indexOf('Log ID'),timeCol=header.indexOf('Evaluation UTC');
+  expect(timeCol).toBeGreaterThanOrEqual(0);
+  for(const row of rows)expect(csv.find(cells=>cells[idCol]===row.id)?.[timeCol]).toBe(row.evidence.times.evaluated_at);
+  await page.reload();
+  await page.waitForFunction(ids=>ids.every(id=>window.CanopyGuardAudit.list().some(r=>r.id===id)),rows.map(x=>x.id));
+  const restored=await page.evaluate(ids=>window.CanopyGuardAudit.list().filter(row=>ids.includes(row.id)),rows.map(x=>x.id));
+  expect(restored.map(r=>r.evidence.times.evaluated_at)).toEqual(rows.map(r=>r.evidence.times.evaluated_at));
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('forecast evaluation timestamp is separate from hourly valid, NWS issue, fetch, and record times',async({page})=>{
+  const blocked=await isolateNetwork(page,['https://api.weather.gov']);
+  const errors=captureErrors(page);
+  await stubNws(page,{
+    points:route=>route.fulfill({status:200,contentType:'application/geo+json',body:JSON.stringify(pointResponse())}),
+    hourly:route=>route.fulfill({status:200,contentType:'application/geo+json',body:JSON.stringify(hourlyResponse())})
+  });
+  await page.goto('/');
+  await expect(page.locator('#weather-network')).toContainText('Fresno, CA: NWS model retrieved',{timeout:20000});
+  const first=await page.evaluate(()=>window.CanopyGuardAudit.list().filter(r=>r.source==='forecast').at(-1));
+  expect(first).toBeTruthy();
+  expect(first.evidence.evaluation_context.evaluationTimeMs).toBe(Date.parse(first.evidence.times.evaluated_at));
+  expect(first.evidence.times.evaluated_at).not.toBe(first.evidence.times.forecast_valid_at);
+  expect(first.evidence.times.evaluated_at).not.toBe(first.evidence.provenance.issued_at);
+  expect(first.evidence.times.recorded_at).toBe(first.recorded_at);
+  await page.locator('#profile-preset').selectOption('volatile_formulation');
+  const latest=await page.evaluate(()=>window.CanopyGuardAudit.list().filter(r=>r.source==='forecast'&&r.event==='PROFILE_CHANGED').at(-1));
+  expect(latest).toBeTruthy();
+  expect(latest.evidence.reproduced_with_current_engine).toBe(true);
+  expect(latest.evidence.evaluation_context.evaluationTimeMs).toBe(Date.parse(latest.evidence.times.evaluated_at));
+  expect(latest.evidence.provenance.location_id).toBe('fresno');
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});

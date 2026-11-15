@@ -167,7 +167,10 @@ export function mountAudit({zone=()=> 'America/Los_Angeles', onRecordSnapshot, l
       const pesticide=row.session?.state==='SPRAYING_IN_PROGRESS'?row.session.pesticide_profile.name:s.pesticide_profile.name;
       const treatment=row.session?.state==='POST_SPRAY_CURING'?` · Prior treatment: ${row.session.pesticide_profile.name}`:'';
       const tr=document.createElement('tr');
-      tr.innerHTML=`<td>${esc(localDate(row.recorded_at,zone()))}<small>Observation ${esc(localDate(s.timestamp,zone()))} · ${esc(row.source)}<br>ID ${esc(row.id)}</small></td>
+      const evaluationTime=row.evidence?.times?.evaluated_at;
+      const timeLabel=row.source==='forecast'?'Forecast valid':row.source==='demo'?'Simulation time':
+        row.source==='live'?'Connected observation':row.source==='imported'?'Imported timestamp':'Snapshot timestamp';
+      tr.innerHTML=`<td>${esc(localDate(row.recorded_at,zone()))}<small>${esc(timeLabel)} ${esc(localDate(s.timestamp,zone()))} · ${esc(row.source)}<br>${evaluationTime?`Evaluated ${esc(localDate(evaluationTime,zone()))}<br>`:''}ID ${esc(row.id)}</small></td>
       <td>${esc(s.orchard_block)}<small>${esc(pesticide+treatment)}</small></td>
       <td>${esc(telemetry(s.readings.ground_5ft))}</td><td>${esc(telemetry(s.readings.canopy_30ft))}</td>
       <td>${signed(d.temperature)}°F · ${Math.abs(d.speed).toFixed(1)} mph · ${d.direction.toFixed(0)}°</td>
@@ -244,7 +247,10 @@ export function mountAudit({zone=()=> 'America/Los_Angeles', onRecordSnapshot, l
       if(key!==day){day=key;const h=document.createElement('h2');h.className='report-day';h.textContent=longDate(key);report.append(h);}
       const s=row.snapshot, e=s.evaluation,d=deltas(s),g=s.readings.ground_5ft,c=s.readings.canopy_30ft;
       const section=document.createElement('section');
-      section.innerHTML=`<h2>${esc(s.orchard_block)} · ${e.multi_height_status}</h2><p>${esc(localDate(row.recorded_at,zone()))} · ${esc(row.source)} · ${esc(row.id)}</p><p>Observation ${esc(s.timestamp)} · ${esc(s.pesticide_profile.name)}${row.session?' · '+esc(row.session.state+' · '+row.session.pesticide_profile.name):''}</p><p>5 ft: ${g.temp_f.toFixed(1)}°F, ${g.wind_speed_mph.toFixed(1)} mph ${esc(g.wind_dir_cardinal)} · 30 ft: ${c.temp_f.toFixed(1)}°F, ${c.wind_speed_mph.toFixed(1)} mph ${esc(c.wind_dir_cardinal)}</p><p>Temperature difference ${signed(d.temperature)}°F · Speed shear ${Math.abs(d.speed).toFixed(1)} mph · Direction shift ${d.direction.toFixed(0)}° · Ground-only ${e.single_station_5ft_status}${hiddenRisk(s)?' · HIDDEN RISK CAUGHT':''}</p><p>${esc(reasons(s))}</p>`;
+      const evaluatedAt=row.evidence?.times?.evaluated_at;
+      const timeLabel=row.source==='forecast'?'Forecast valid':row.source==='demo'?'Simulation time':
+        row.source==='live'?'Connected observation':row.source==='imported'?'Imported timestamp':'Snapshot timestamp';
+      section.innerHTML=`<h2>${esc(s.orchard_block)} · ${e.multi_height_status}</h2><p>${esc(localDate(row.recorded_at,zone()))} · ${esc(row.source)} · ${esc(row.id)}</p><p>${esc(timeLabel)} ${esc(s.timestamp)} · Evaluation ${evaluatedAt?esc(evaluatedAt):'unavailable'} · ${esc(s.pesticide_profile.name)}${row.session?' · '+esc(row.session.state+' · '+row.session.pesticide_profile.name):''}</p><p>5 ft: ${g.temp_f.toFixed(1)}°F, ${g.wind_speed_mph.toFixed(1)} mph ${esc(g.wind_dir_cardinal)} · 30 ft: ${c.temp_f.toFixed(1)}°F, ${c.wind_speed_mph.toFixed(1)} mph ${esc(c.wind_dir_cardinal)}</p><p>Temperature difference ${signed(d.temperature)}°F · Speed shear ${Math.abs(d.speed).toFixed(1)} mph · Direction shift ${d.direction.toFixed(0)}° · Ground-only ${e.single_station_5ft_status}${hiddenRisk(s)?' · HIDDEN RISK CAUGHT':''}</p><p>${esc(reasons(s))}</p>`;
       report.append(section);
     }
     window.print();
