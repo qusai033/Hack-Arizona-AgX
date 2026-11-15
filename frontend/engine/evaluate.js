@@ -12,14 +12,22 @@ function invalidEvaluation(error) {
 }
 /** Pure, synchronous, no network / timers / random values / implicit wall clock.
  * nowMs is optional explicit freshness context; never pass it for forecast rows.
+ * evaluationTimeMs is an independent, explicitly supplied decision-clock instant.
+ * It describes when the evaluation was performed (simulation clock for demos),
+ * does not enforce observation freshness, and does not change any screening rule.
  * labelProhibitsInversion is external verified label context, not a new snapshot field.
  */
 export function analyze(input,context={}) {
   try {
     assertWeatherInput(input);
     if(!context||typeof context!=='object'||Array.isArray(context))throw new TypeError('Evaluation context must be an object.');
-    for(const k of Object.keys(context))if(!['session','nowMs','maxAgeMs','labelProhibitsInversion'].includes(k))throw new TypeError(`Unknown evaluation context field: ${k}`);
+    for(const k of Object.keys(context))if(!['session','nowMs','maxAgeMs','labelProhibitsInversion','evaluationTimeMs'].includes(k))throw new TypeError(`Unknown evaluation context field: ${k}`);
     if(context.labelProhibitsInversion!==undefined&&typeof context.labelProhibitsInversion!=='boolean')throw new TypeError('labelProhibitsInversion must be boolean.');
+    if(context.evaluationTimeMs!==undefined &&
+       (!Number.isSafeInteger(context.evaluationTimeMs) || context.evaluationTimeMs<0 ||
+        !Number.isFinite(new Date(context.evaluationTimeMs).getTime()))) {
+      throw new TypeError('evaluationTimeMs must be a finite Unix millisecond timestamp.');
+    }
     if(context.nowMs!==undefined){
       if(!Number.isFinite(context.nowMs)||!Number.isFinite(context.maxAgeMs??300000)||(context.maxAgeMs??300000)<=0)throw new TypeError('Invalid freshness context.');
       assertFresh(input,context.nowMs,context.maxAgeMs??300000);
