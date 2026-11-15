@@ -190,7 +190,7 @@ test('built demo preserves unique actions, idempotent events, v2 evidence, CSV c
   expect(latest.evidence.evaluation_context.session.ended_at).toBeTruthy();
 
   const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Export PCA Audit Log (CSV)', exact: true }).click();
+  await page.getByRole('button', { name: 'Export Activity Log (CSV)', exact: true }).click();
   const csv = parseCsv(await saveDownload(await downloadPromise, testInfo, 'audit.csv'));
   expect(csv.length).toBeGreaterThan(1);
   const header = csv[0];
@@ -282,7 +282,7 @@ test('dismissed alerts recur on a new risky transition and both demo reset contr
   await expect(drawer).toBeHidden();
 
   await page.locator('[data-scenario="clear"]').click();
-  await expect(page.locator('#decision-title')).toContainText('SAFE TO SPRAY');
+  await expect(page.locator('#decision-title')).toContainText('GO — configured weather checks passed');
   await page.locator('[data-scenario="trap"]').click();
   await expect(page.locator('#decision-title')).toContainText('DO NOT SPRAY');
   await expect(drawer).toBeVisible();
@@ -615,9 +615,9 @@ test('audit calendar files records by day, follows the latest record, and scopes
 
   await page.locator('#audit-export-scope').selectOption('day');
   const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Export PCA Audit Log (CSV)', exact: true }).click();
+  await page.getByRole('button', { name: 'Export Activity Log (CSV)', exact: true }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe(`canopyguard-pca-audit-${expected.day}.csv`);
+  expect(download.suggestedFilename()).toBe(`canopyguard-activity-log-${expected.day}.csv`);
   const csv = parseCsv(await saveDownload(download, testInfo, 'audit-day.csv'));
   const dateColumn = csv[0].indexOf('Observation date');
   expect(dateColumn).toBe(csv[0].length - 1);
@@ -650,7 +650,7 @@ test('SPEC-EVALUATION-TIME: paused demo records capture evaluation clock without
     expect(row.evidence.evaluation_context.evaluationTimeMs).toBe(Date.parse(row.evidence.times.evaluated_at));
   }
   const downloadPromise=page.waitForEvent('download');
-  await page.getByRole('button',{name:'Export PCA Audit Log (CSV)',exact:true}).click();
+  await page.getByRole('button',{name:'Export Activity Log (CSV)',exact:true}).click();
   const csv=parseCsv(await saveDownload(await downloadPromise,testInfo,'evaluation-time-demo.csv'));
   const header=csv[0],idCol=header.indexOf('Log ID'),timeCol=header.indexOf('Evaluation UTC');
   expect(timeCol).toBeGreaterThanOrEqual(0);
