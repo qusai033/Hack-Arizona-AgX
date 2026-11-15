@@ -24,6 +24,13 @@ function captureErrors(page) {
   return errors;
 }
 
+async function expectWeatherOnlySessionView(page, notice = 'Weather forecasts do not include treatment history or post-application monitoring.') {
+  await expect(page.locator('#session-panel')).toBeHidden();
+  const message = page.locator('#forecast #session-production-notice');
+  await expect(message).toBeVisible();
+  await expect(message).toHaveText(notice);
+}
+
 function parseCsv(input) {
   const source = input.charCodeAt(0) === 0xFEFF ? input.slice(1) : input;
   const rows = [];
@@ -342,19 +349,30 @@ test('four-step judge walkthrough keeps its anchored forecast and filtered audit
   expect(errors).toEqual([]);
 });
 
-test('production startup accepts a controlled fresh NWS response and exposes every forecast location', async ({ page }) => {
+test('production loading and fresh NWS forecasts hide the inactive treatment card and expose every location', async ({ page }) => {
   const blocked = await isolateNetwork(page, ['https://api.weather.gov']);
   const errors = captureErrors(page);
   let hourlyRequests = 0;
+  let releaseForecast;
+  const forecastReady = new Promise(resolve => { releaseForecast = resolve; });
   await stubNws(page, {
     points: route => route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(pointResponse()) }),
-    hourly: route => {
+    hourly: async route => {
       hourlyRequests++;
+      await forecastReady;
       return route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(hourlyResponse()) });
     }
   });
   await page.goto('/');
+  try {
+    await expect.poll(() => hourlyRequests).toBe(1);
+    await expect(page.locator('#weather-network')).toContainText('Loading NWS hourly forecast');
+    await expectWeatherOnlySessionView(page);
+  } finally {
+    releaseForecast();
+  }
   await expect(page.locator('#weather-network')).toContainText('Fresno, CA: NWS model retrieved', { timeout: 20000 });
+  await expectWeatherOnlySessionView(page);
   await expect(page.locator('#source-badge')).toContainText('NWS FORECAST');
   await expect(page.locator('#orchard')).toBeVisible();
   await expect(page.locator('#orchard #weather-panel')).toBeHidden();
@@ -375,6 +393,9 @@ test('production startup accepts a controlled fresh NWS response and exposes eve
   await expect.poll(() => hourlyRequests).toBeGreaterThan(beforeRefresh);
   await expect(page.locator('#weather-network')).toContainText('Modesto, CA: NWS model retrieved');
   await expect(page.locator('#decision-title')).not.toContainText('DATA UNAVAILABLE');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectWeatherOnlySessionView(page);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
 });
@@ -446,6 +467,7 @@ test('production startup fails closed for stale NWS issuance and for unavailable
   });
   await page.goto('/');
   await expect(page.locator('#decision-title')).toContainText('DATA UNAVAILABLE', { timeout: 20000 });
+  await expectWeatherOnlySessionView(page);
 
   await page.unroute('https://api.weather.gov/**');
   await stubNws(page, {
@@ -454,6 +476,7 @@ test('production startup fails closed for stale NWS issuance and for unavailable
   });
   await page.reload();
   await expect(page.locator('#decision-title')).toContainText('DATA UNAVAILABLE', { timeout: 20000 });
+  await expectWeatherOnlySessionView(page);
   expect(blocked).toEqual([]);
   // The mocked 503 is the intentional network failure under test, not a page error.
   expect(errors.filter(error => !error.includes('status of 503 (Service Unavailable)'))).toEqual([]);
@@ -510,7 +533,7 @@ test('forecast profile controls re-screen NWS weather, retain the profile throug
   await expect(page.locator('#nozzle')).toBeEnabled();
   await expect(page.locator('#effective-limits')).toContainText('Modeled screening limits');
   await expect(page.locator('#profile-hint')).toContainText('NWS-derived heights are MODELED');
-  await expect(page.locator('#session-state')).toHaveText('NOT CONNECTED');
+  await expectWeatherOnlySessionView(page);
   await expect(page.locator('#demo-session-actions')).toBeHidden();
   await expect(page.locator('#session-demo-disclaimer')).toBeHidden();
   await expect(page.locator('#session-production-notice')).toBeVisible();
@@ -560,11 +583,16 @@ test('forecast profile controls re-screen NWS weather, retain the profile throug
 });
 
 test('visible links switch between production and interactive demo, revealing session controls only in demo',async({page})=>{
-  const blocked=await isolateNetwork(page);
+  const blocked=await isolateNetwork(page,['https://api.weather.gov']);
   const errors=captureErrors(page);
+  await stubNws(page,{
+    points:route=>route.fulfill({status:200,contentType:'application/geo+json',body:JSON.stringify(pointResponse())}),
+    hourly:route=>route.fulfill({status:200,contentType:'application/geo+json',body:JSON.stringify(hourlyResponse())})
+  });
   await page.goto('/?mode=demo');
   await expect(page.locator('#demo-entry')).toBeHidden();
   await expect(page.locator('#forecast-entry')).toBeVisible();
+  await expect(page.locator('#session-panel')).toBeVisible();
   await expect(page.locator('#demo-session-actions')).toBeVisible();
   await expect(page.locator('#session-production-notice')).toBeHidden();
   await expect(page.locator('#session-demo-disclaimer')).toBeVisible();
@@ -573,9 +601,47 @@ test('visible links switch between production and interactive demo, revealing se
   await expect(page.locator('#session-start')).toBeEnabled();
   await page.locator('#session-start').click();
   await expect(page.locator('#session-state')).toContainText('SPRAYING');
+  await page.locator('#session-finish').click();
+  await expect(page.locator('#session-state')).toHaveText('POST SPRAY CURING');
+  await page.locator('#forecast-entry').click();
+  await expect(page.locator('#weather-network')).toContainText('Fresno, CA: NWS model retrieved');
+  await expectWeatherOnlySessionView(page);
+  await page.locator('#demo-entry').click();
+  await expect(page.locator('#session-panel')).toBeVisible();
+  await expect(page.locator('#session-state')).toHaveText('BEFORE SPRAY');
+  await expect(page.locator('#session-production-notice')).toBeHidden();
   expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+for (const source of ['imported', 'live']) {
+  test(`switching from a demo session to ${source} weather hides the treatment card`, async ({ page }) => {
+    const blocked = await isolateNetwork(page);
+    const errors = captureErrors(page);
+    await page.goto('/?mode=demo');
+    await page.locator('#session-example').click();
+    await expect(page.locator('#session-panel')).toBeVisible();
+    await expect(page.locator('#session-state')).toHaveText('POST SPRAY CURING');
+
+    await page.evaluate(async source => {
+      const { createDemoState } = await import('/demo-controller.js');
+      const { snapshot } = createDemoState({ clock_iso: new Date().toISOString() });
+      if (source === 'imported') window.CanopyGuard.setSnapshot(snapshot);
+      else await window.CanopyGuard.connect({ mode: 'live', loadSnapshot: async () => snapshot });
+    }, source);
+    await expectWeatherOnlySessionView(page, source === 'imported'
+      ? 'Imported snapshots do not include connected treatment history or post-application monitoring.'
+      : 'Weather observations do not include treatment history or post-application monitoring.');
+    expect(await page.evaluate(() => window.CanopyGuard.getSession())).toBeNull();
+
+    await page.evaluate(() => window.CanopyGuard.useDemo('clear'));
+    await expect(page.locator('#session-panel')).toBeVisible();
+    await expect(page.locator('#session-production-notice')).toBeHidden();
+    await expect(page.locator('#session-start')).toBeEnabled();
+    expect(blocked).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+}
 
 test('audit calendar files records by day, follows the latest record, and scopes the CSV export', async ({ page }, testInfo) => {
   const blocked = await isolateNetwork(page);
