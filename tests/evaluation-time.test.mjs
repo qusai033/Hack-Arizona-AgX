@@ -72,7 +72,7 @@ test('afternoon treatment replay uses same clock, session and evaluated time in 
   assert.deepEqual(row.evidence.evaluation_context.session,state.session);
   assert.deepEqual(analyze(restored.snapshot,restored.evidence.evaluation_context).evaluation,restored.snapshot.evaluation);
   const csv=auditCSV([restored],'America/Los_Angeles');
-  assert.match(csv,/"Evaluated UTC"/);
+  assert.match(csv,/"Evaluation UTC"/);
   assert.ok(csv.includes(row.evidence.times.evaluated_at));
   assert.ok(csv.includes('evaluationTimeMs'));
   assert.ok(csv.includes('POST_SPRAY_VOLATILITY_ALERT'));
@@ -111,7 +111,7 @@ test('forecast evaluated time is the supplied screening instant, not future vali
   assert.notEqual(row.evidence.times.evaluated_at,row.evidence.provenance.fetched_at);
   assert.deepEqual(analyze(row.snapshot,row.evidence.evaluation_context).evaluation,row.snapshot.evaluation);
   const csv=auditCSV([row],'America/Los_Angeles');
-  assert.match(csv,/"Evaluated UTC"/);
+  assert.match(csv,/"Evaluation UTC"/);
   assert.ok(csv.includes(row.evidence.times.evaluated_at));
 });
 
