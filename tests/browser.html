@@ -18,7 +18,7 @@ document.getElementById('run').onclick=async()=>{
   await api.connect({mode:'live',loadSnapshot:async()=>scenario('clear')});
   assert(d.getElementById('decision-title').textContent.includes('DATA UNAVAILABLE'),'Stale live snapshot fails closed');
   await api.connect({mode:'live',loadSnapshot:async()=>live()});
-  assert(d.getElementById('decision-title').textContent==='SAFE TO SPRAY NOW','Fresh connected snapshot renders evaluator GO');
+  assert(d.getElementById('decision-title').textContent==='GO — configured weather checks passed','Fresh connected snapshot renders evaluator GO');
   let rejectEval;
   await api.connect({mode:'live',loadSnapshot:async()=>live(),evaluateProfile:()=>new Promise((_,reject)=>{rejectEval=reject;})});
   const selector=d.getElementById('volatility');selector.value='LOW';selector.dispatchEvent(new w.Event('change'));

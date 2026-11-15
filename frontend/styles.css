@@ -186,3 +186,35 @@ body{padding-bottom:130px}
 .station-check .station-status.GO{color:var(--green)}
 .station-check .station-status.CAUTION{color:var(--amber)}
 .station-check .station-status.STOP{color:var(--red)}
+
+/* Issue #42: clear, compact decision-support disclosures across viewports. */
+.prototype-disclaimer {
+  margin:0 0 22px;
+  padding:15px 18px;
+  border:1px solid #ccb17f;
+  border-left:4px solid #9b741f;
+  border-radius:9px;
+  background:#fff9ec;
+  color:#4a3d1f;
+  font-size:13px;
+  line-height:1.6;
+}
+.prototype-disclaimer strong{display:block;font-size:14px;margin-bottom:4px}
+.prototype-disclaimer p{margin:4px 0}
+.ground-limitations {
+  margin-top:14px;
+  padding:12px 14px;
+  border:1px solid #d8cfb5;
+  border-radius:8px;
+  background:#faf8ef;
+  color:#50472e;
+  font-size:12px;
+  line-height:1.55;
+}
+.ground-limitations strong{font-size:12px}
+.ground-limitations ul{margin:6px 0 0;padding-left:19px}
+.ground-limitations li+li{margin-top:4px}
+@media(max-width:760px){
+  .prototype-disclaimer{padding:12px 14px;font-size:12px}
+  .ground-limitations{padding:11px;font-size:12px}
+}
