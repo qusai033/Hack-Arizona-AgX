@@ -180,3 +180,14 @@ test('selected filters are applied before serialization without imposing a displ
   const rows = parseCSV(auditCSV(matching, 'America/Phoenix'));
   assert.equal(rows.length, 2);
 });
+
+test('external evaluator null metadata stays explicit instead of becoming invented engine provenance', () => {
+  const row = makeRecordedRow({ source: 'imported' });
+  const [headers, values] = parseCSV(auditCSV([row], 'America/Phoenix'));
+  const get = name => values[column(headers, name)];
+  assert.equal(get('Evaluator kind'), 'external_or_unverified');
+  assert.equal(get('Engine version'), 'null');
+  assert.equal(JSON.parse(get('Effective thresholds JSON')), null);
+  assert.equal(get('Rule/config version'), CSV_UNAVAILABLE);
+  assert.deepEqual(JSON.parse(get('Audit evidence JSON')), row.evidence);
+});
