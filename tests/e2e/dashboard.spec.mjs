@@ -705,6 +705,7 @@ test('SPEC-COPY and SPEC-DISCLOSURE: demo shows illustrative inputs, a no-cleara
     await expect(page.locator('#profile-name')).toContainText('Illustrative');
     await expect(page.locator('#profile-hint')).toContainText('Illustrative thresholds only');
   }
+  await page.locator('#profile-preset').selectOption('contact_fungicide');
   await page.locator('[data-scenario="clear"]').click();
   await expect(page.locator('#decision-title')).toHaveText('GO — configured weather checks passed');
   await expect(page.locator('#decision-label')).toContainText('PROTOTYPE SCREENING STATUS');
