@@ -121,6 +121,7 @@ function source() {
   $('weather-panel').hidden=mode!=='demo';
   $('judge-bar').hidden=mode!=='demo';
   $('demo-session-actions').hidden=mode!=='demo';
+  $('session-demo-disclaimer').hidden=mode!=='demo';
   $('session-production-notice').hidden=mode==='demo';
   $('demo-entry').hidden=mode==='demo';
   $('forecast-entry').hidden=mode!=='demo';
