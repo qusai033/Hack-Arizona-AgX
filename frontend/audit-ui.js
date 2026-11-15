@@ -231,7 +231,7 @@ export function mountAudit({zone=()=> 'America/Los_Angeles', onRecordSnapshot, l
     const data=auditCSV(records,zone());
     const url=URL.createObjectURL(new Blob(['\uFEFF',data],{type:'text/csv;charset=utf-8'}));
     const link=document.createElement('a');
-    link.href=url;link.download=`canopyguard-pca-audit${label?'-'+label:''}.csv`;link.click();
+    link.href=url;link.download=`canopyguard-activity-log${label?'-'+label:''}.csv`;link.click();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
     $('audit-delivery').textContent=`Exported ${records.length} ${records.length===1?'record':'records'} · ${title}.`;
   }
@@ -240,7 +240,7 @@ export function mountAudit({zone=()=> 'America/Los_Angeles', onRecordSnapshot, l
     const {records:found,title}=scoped($('audit-export-scope').value);
     const records=[...groupByDay(found,zone()).entries()].sort(([a],[b])=>a.localeCompare(b)).flatMap(([,rows])=>rows);
     const report=$('audit-print');
-    report.innerHTML=`<h1>CanopyGuard Spray Compliance Report</h1><p>${esc(title)}</p><p>Generated ${esc(localDate(new Date().toISOString(),zone()))} · ${esc(zone())} · Filter: ${esc(filter)} · ${records.length} records</p><p>Decision-support record. Source labels distinguish simulation from connected observations. Verify pesticide labels and on-site conditions.</p>`;
+    report.innerHTML=`<h1>CanopyGuard Activity &amp; Decision Log</h1><p>${esc(title)}</p><p>Generated ${esc(localDate(new Date().toISOString(),zone()))} · ${esc(zone())} · Filter: ${esc(filter)} · ${records.length} records</p><p>Prototype activity summary, not compliance certification or application clearance. Source labels distinguish simulation from connected observations and modeled forecast data. Verify pesticide labels and on-site conditions.</p>`;
     let day;
     for(const row of records){
       const key=recordDay(row,zone());
