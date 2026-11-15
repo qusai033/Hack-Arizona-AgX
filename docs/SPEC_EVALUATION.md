@@ -10,6 +10,9 @@ Implementation Plan & Handoff**, the final Gemini PDF supplied by the project ow
 - The original challenge brief was not supplied. This is an implementation-handoff
   evaluation, not certification against the challenge organizer's requirements.
 
+The first evaluated baseline is recorded in
+[Specification findings — 2026-11-15](SPEC_FINDINGS_2026-11-15.md).
+
 The PDF is not needed to execute the suite. Its five input cases, expected results,
 three profiles, and configuration constants are transcribed independently into
 `tests/spec/canonical.mjs`. Expected values are never read from application fixtures
@@ -129,6 +132,8 @@ Later project decisions are tracked explicitly:
 - The original full TypeScript field contract, scaffold ownership/timing, all nullable
   input permutations, and every possible profile/session combination are not fully
   verified by these browser tests. Existing Node tests supply additional coverage.
+- Profile projections compare exposed effective limits; the high-volatility negative
+  inversion-caution cutoff is not independently probed by this first suite.
 - Missing-sensor UI is checked for presence, but its complete interactive null/N/A
   rendering cannot be exercised until that control exists. A passing valid-data SVG
   test is not a claim of nullable-SVG coverage.
