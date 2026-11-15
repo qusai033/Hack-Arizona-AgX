@@ -124,6 +124,7 @@ test('built demo preserves unique actions, idempotent events, v2 evidence, CSV c
       first,
       second,
       before,
+      beforeTimestamp: window.CanopyGuardAudit.list().at(-1).snapshot.timestamp,
       after: rows.length,
       eventRows: rows.filter(row => row.id === action.event_id).length,
       lastTimestamp: rows.at(-1).snapshot.timestamp
@@ -133,6 +134,7 @@ test('built demo preserves unique actions, idempotent events, v2 evidence, CSV c
   expect(duplicateResult.second).toBe(false);
   expect(duplicateResult.after).toBe(duplicateResult.before + 1);
   expect(duplicateResult.eventRows).toBe(1);
+  expect(Date.parse(duplicateResult.lastTimestamp) - Date.parse(duplicateResult.beforeTimestamp)).toBe(60_000);
 
   await page.getByRole('button', { name: 'Demo: treated 2 hrs ago', exact: true }).click();
   await expect(page.locator('#session-state')).toContainText('POST SPRAY CURING');
