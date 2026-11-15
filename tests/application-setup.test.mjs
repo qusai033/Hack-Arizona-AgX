@@ -40,7 +40,7 @@ test('profile controls share sizing and responsive rules for tablet and mobile',
   assert.match(css, /\.profile-panel \.profile-controls \.selectors\s*\{[^}]*display:contents/);
   assert.match(css, /\.profile-panel \.profile-controls select\s*\{[^}]*height:50px;[^}]*width:100%|\.profile-panel \.profile-controls select\s*\{[^}]*width:100%;[^}]*height:50px/);
   assert.match(css, /@media\(max-width:980px\)\s*\{\s*\.profile-panel \.profile-controls/);
-  assert.match(css, /@media\(max-width:600px\)\s*\{[\s\S]*?\.profile-panel \.profile-controls \.selectors/);
+  assert.match(css, /@media\(max-width:600px\)\s*\{[\s\S]*?\.profile-panel \.profile-controls\s*\{[^}]*grid-template-columns:minmax\(0,1fr\)/);
   assert.match(css, /\.profile-panel \.profile-heading #profile-name\s*\{[^}]*overflow-wrap:anywhere/);
   assert.match(css, /\.profile-panel \.profile-controls select:disabled/);
 });
