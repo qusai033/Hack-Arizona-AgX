@@ -762,3 +762,66 @@ test('production forecast keeps modeled-source warnings alongside the new config
   expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+
+test('SPEC-BADGES: demo displays real evaluator version, per-height quality and illustrative rule provenance',async({page})=>{
+  const blocked=await isolateNetwork(page);
+  const errors=captureErrors(page);
+  await page.goto('/?mode=demo');
+  const last=await page.evaluate(()=>window.CanopyGuardAudit.list().at(-1));
+  expect(last.evidence.engine_version).toBeTruthy();
+  expect(last.snapshot.evaluation.data_quality.overall_status).toBe('VALID');
+  await expect(page.locator('#decision')).toContainText(last.evidence.engine_version);
+  await expect(page.locator('#decision-metadata')).toContainText('Input VALID');
+  await expect(page.locator('#decision-metadata')).toContainText('5 ft VALID');
+  await expect(page.locator('#decision-metadata')).toContainText('30 ft VALID');
+  await expect(page.locator('#decision-metadata')).toContainText('Freshness not assessed');
+  await expect(page.locator('#decision-metadata')).toContainText('ILLUSTRATIVE_THRESHOLD');
+  await expect(page.locator('.rule-origin').first()).toContainText('Source heights:');
+  await page.locator('[data-scenario="clear"]').click();
+  await expect(page.locator('#decision-metadata')).toContainText('No rules triggered');
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('source badges never invent input quality or rule origin for imported evaluations and rejected data',async({page})=>{
+  const blocked=await isolateNetwork(page);
+  const errors=captureErrors(page);
+  await page.goto('/?mode=demo');
+  const stored=await page.evaluate(()=>window.CanopyGuardAudit.list().at(-1).snapshot);
+  // The same snapshot is now an *imported external result*: no built-in origin
+  // can safely be claimed merely because its JSON contains optional metadata.
+  await page.evaluate(snapshot=>window.CanopyGuard.setSnapshot(snapshot),stored);
+  await expect(page.locator('#decision-metadata')).toContainText('Evaluator unverified');
+  await expect(page.locator('#decision-metadata')).toContainText('Input quality unverified');
+  await expect(page.locator('#decision-metadata')).toContainText('Rule provenance unavailable');
+  await expect(page.locator('#decision-metadata')).not.toContainText('Input VALID');
+  await page.evaluate(snapshot=>{
+    const broken=structuredClone(snapshot);broken.readings.canopy_30ft.temp_f=null;
+    try{window.CanopyGuard.setSnapshot(broken);}catch{}
+  },stored);
+  await expect(page.locator('#decision-title')).toContainText('DATA UNAVAILABLE');
+  await expect(page.locator('#decision-metadata')).toContainText('Input quality unavailable');
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('NWS model badges distinguish valid input structure from verified orchard sensor measurements',async({page})=>{
+  const blocked=await isolateNetwork(page,['https://api.weather.gov']);
+  const errors=captureErrors(page);
+  await stubNws(page,{
+    points:route=>route.fulfill({status:200,contentType:'application/geo+json',body:JSON.stringify(pointResponse())}),
+    hourly:route=>route.fulfill({status:200,contentType:'application/geo+json',body:JSON.stringify(hourlyResponse())})
+  });
+  await page.goto('/');
+  await expect(page.locator('#weather-network')).toContainText('NWS model retrieved',{timeout:20000});
+  await expect(page.locator('#decision-metadata')).toContainText('Input VALID');
+  await expect(page.locator('#decision-metadata')).toContainText('HEIGHTS MODELED');
+  await expect(page.locator('#decision-metadata')).toContainText('Freshness not assessed');
+  const record=await page.evaluate(()=>window.CanopyGuardAudit.list().filter(row=>row.source==='forecast').at(-1));
+  expect(record.evidence.engine_version).toBeTruthy();
+  await expect(page.locator('#decision-metadata')).toContainText(record.evidence.engine_version);
+  expect(record.evidence.diagnostics.data_quality.overall_status).toBe('VALID');
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});
