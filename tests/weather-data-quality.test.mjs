@@ -32,6 +32,42 @@ test('fresh observations preserve provenance and distinguish retrieval time from
   assert.deepEqual(result.issues, []);
 });
 
+test('provider issuance, record valid time, retrieval time, and evaluation time remain separate', () => {
+  const issuedAt = iso(-4);
+  const retrievedAt = new Date(referenceTimeMs - 30 * 60 * 1000).toISOString();
+  const result = assessWeatherEnvelope(envelope({ issuedAt, retrievedAt }), { referenceTimeMs });
+
+  assert.equal(result.issuedAt, issuedAt);
+  assert.equal(result.issuanceTimestampStatus, 'valid');
+  assert.equal(result.issuanceAgeMs, 4 * hour);
+  assert.equal(result.records[0].validAt, iso(-2));
+  assert.equal(result.retrievedAt, retrievedAt);
+  assert.equal(result.evaluatedAt, iso(0));
+  assert.equal(result.retrievalAgeMs, 30 * 60 * 1000);
+  assert.notEqual(result.issuedAt, result.records[0].validAt);
+  assert.notEqual(result.records[0].validAt, result.retrievedAt);
+  assert.notEqual(result.retrievedAt, result.evaluatedAt);
+});
+
+test('invalid optional issuance metadata is reported without changing retrieval freshness classification', () => {
+  const baseline = assessWeatherEnvelope(envelope(), { referenceTimeMs });
+  const invalidIssuance = assessWeatherEnvelope(envelope({ issuedAt: 'not-a-date' }), { referenceTimeMs });
+  const oldIssuance = assessWeatherEnvelope(envelope({ issuedAt: iso(-12) }), { referenceTimeMs });
+  const futureIssuance = assessWeatherEnvelope(envelope({ issuedAt: iso(12) }), { referenceTimeMs });
+
+  assert.equal(invalidIssuance.issuedAt, null);
+  assert.equal(invalidIssuance.issuanceTimestampStatus, 'invalid');
+  assert.equal(invalidIssuance.issuanceAgeMs, null);
+  assert.equal(invalidIssuance.freshness, baseline.freshness);
+  assert.equal(invalidIssuance.status, baseline.status);
+  assert.equal(oldIssuance.issuanceAgeMs, 12 * hour);
+  assert.equal(oldIssuance.freshness, baseline.freshness);
+  assert.equal(oldIssuance.status, baseline.status);
+  assert.equal(futureIssuance.issuanceAgeMs, -12 * hour);
+  assert.equal(futureIssuance.freshness, baseline.freshness);
+  assert.equal(futureIssuance.status, baseline.status);
+});
+
 test('forecast, modeled, and synthetic feeds are never labelled as measured observations', () => {
   for (const [kind, label] of [
     ['forecast', 'Forecast values'],

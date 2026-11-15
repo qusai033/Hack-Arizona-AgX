@@ -100,9 +100,12 @@ function inspectRecord(record, index, config, observed) {
 }
 /**
  * Assess a source envelope:
- * { source: { label, kind }, retrievedAt, records: [{ validAt, values }] }
+ * { source: { label, kind }, issuedAt?, retrievedAt, records: [{ validAt, values }] }
  * Source kinds: observed | forecast | modeled | synthetic.
- * validAt is record time; retrievedAt is application retrieval time.
+ * issuedAt is provider issuance time; validAt is record time; retrievedAt is
+ * application retrieval time; referenceTimeMs is the explicit evaluation clock.
+ * Issuance age is reported as provenance only. Freshness classification applies
+ * only to retrievedAt and observed-record age using the generic options supplied.
  * Returned summaries contain metadata only, not raw measurements.
  * Only status 'ok' means no problem was found; 'unavailable' must not be displayed as usable data.
  */
@@ -120,6 +123,9 @@ export function assessWeatherEnvelope(envelope, options = {}) {
   if (!Array.isArray(envelope.records)) throw new TypeError('Weather envelope records must be an array');
   const observed = source.kind === 'observed';
 
+  const hasIssuedAt = Object.hasOwn(envelope, 'issuedAt') && envelope.issuedAt !== null;
+  const issuedAtMs = hasIssuedAt ? parseTimestamp(envelope.issuedAt) : null;
+  const issuanceTimestampStatus = !hasIssuedAt ? 'missing' : issuedAtMs === null ? 'invalid' : 'valid';
   const retrievedAtMs = parseTimestamp(envelope.retrievedAt);
   const ageMs = retrievedAtMs === null ? null : config.referenceTimeMs - retrievedAtMs;
   const freshness = classifyAge(ageMs, config);
@@ -181,7 +187,11 @@ export function assessWeatherEnvelope(envelope, options = {}) {
     sourceKind: source.kind,
     sourceKindLabel: WEATHER_SOURCE_KINDS[source.kind],
     isMeasured: observed,
+    issuedAt: issuedAtMs === null ? null : new Date(issuedAtMs).toISOString(),
+    issuanceTimestampStatus,
+    issuanceAgeMs: issuedAtMs === null ? null : config.referenceTimeMs - issuedAtMs,
     retrievedAt: retrievedAtMs === null ? null : new Date(retrievedAtMs).toISOString(),
+    evaluatedAt: new Date(config.referenceTimeMs).toISOString(),
     retrievalAgeMs: ageMs,
     freshness,
     latestValidRecordAt: latestValidMs === null ? null : new Date(latestValidMs).toISOString(),
