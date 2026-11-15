@@ -144,3 +144,5 @@ body{padding-bottom:130px}
     grid-column:auto;
   }
 }
+
+.clock-end{font-size:.75rem;color:var(--muted, #6b7468);margin:0 .35rem;white-space:nowrap}

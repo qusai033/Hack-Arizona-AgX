@@ -132,3 +132,11 @@ test('event construction copies payloads and preserves explicitly supplied ident
   assert.equal(event.payload.profile.max_wind_mph,10);
   assert.equal(event.recorded_at,'2026-11-15T20:00:00.000Z');
 });
+test('demo starts at the trap preset dawn anchor and playback never runs before it',()=>{
+  const state=createDemoState();
+  assert.equal(state.snapshot.timestamp,INITIAL_SIM_TIME);
+  assert.equal(new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',hour:'numeric',minute:'2-digit'}).format(new Date(INITIAL_SIM_TIME)),'6:45 AM');
+  assert.ok(state.snapshot.evaluation.caught_hidden_risk);
+  // The weather service can model earlier in the day, but the controller's clock stays forward-only.
+  assert.throws(()=>apply(state,'FRAME_SELECTED',{minute:-60}),RangeError);
+});

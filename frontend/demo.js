@@ -3,7 +3,7 @@ import { getProfile } from './engine/profiles.js';
 
 // Only observations/forecasts are simulated; every evaluation uses the shared engine.
 const input = {
-  timestamp: '2026-11-15T06:45:00Z',
+  timestamp: '2026-11-15T14:45:00Z', // 6:45 AM PST
   scenario_name: 'Demo Trap: False Ground Calm with Upper Inversion',
   orchard_block: 'Block 4B - Nonpareil Almonds (Fresno, CA)',
   readings: {

@@ -3,7 +3,8 @@ import { scenario } from './demo.js';
 import { reading, simulateWeather } from './weather.js';
 import { evaluateSnapshot, getProfile, createSession, startSpray, finishSpray } from './engine/index.js';
 
-export const INITIAL_SIM_TIME = '2026-11-15T06:45:00.000Z';
+// 6:45 AM PST: the default trap preset's dawn anchor, so the first clock reading matches its conditions.
+export const INITIAL_SIM_TIME = '2026-11-15T14:45:00.000Z';
 export const AFTERNOON_REPLAY_TIME = '2026-11-15T23:00:00.000Z';
 const MINUTE = 60000;
 const scenarios = ['trap', 'marginal', 'clear', 'calm', 'evaporation', 'afternoon'];

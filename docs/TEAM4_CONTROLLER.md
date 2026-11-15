@@ -13,7 +13,8 @@ Transitions are synchronous and do not read wall-clock time or generate IDs.
 The state contains the scenario/frame, an independent simulation clock, profile,
 overrides, full treatment session, and evaluated snapshot.
 
-- Initial ordinary demo time remains `2026-11-15T06:45:00.000Z`.
+- Initial ordinary demo time is `2026-11-15T14:45:00.000Z` (6:45 AM PST), the
+  default trap preset's dawn anchor.
 - Each simulation tick advances one frame and 60 seconds.
 - Selecting a scenario resets its frame, clears overrides, advances time by
   60 seconds, and preserves manual treatments and existing audit records.

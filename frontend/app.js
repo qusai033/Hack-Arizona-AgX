@@ -1,5 +1,5 @@
 import { mountAudit } from './audit-ui.js';
-import { loadOrchardForecast, forecastWindow, locations } from './weather.js';
+import { loadOrchardForecast, forecastWindow, locations, presetTimeOfDay } from './weather.js';
 import { assertSnapshot, assertFresh, deltas, escapeHTML as esc, signed } from './contract.js';
 import { evaluateDemo, demoForecast } from './demo.js';
 import { orchardSVG } from './visualizer.js';
@@ -373,7 +373,13 @@ function syncWeatherControls(){
   $('weather-step').disabled=playback.isPlaying()||invalid||simulationMinute>=lastFrame(activeScenario);
   $('weather-minute').max=lastFrame(activeScenario);
   $('weather-minute').value=simulationMinute;
-  $('weather-clock').textContent=`Minute ${simulationMinute} · ${formatTime(snapshot.timestamp,'America/Los_Angeles')}`;
+  // The slider scrubs the scenario's own day from its anchor time. The simulation clock stays
+  // separate and only moves forward, so audit and treatment times are never backdated.
+  const preset=activeScenario==='marginal'?'evaporation':activeScenario, last=lastFrame(activeScenario);
+  $('weather-start').textContent=presetTimeOfDay(preset);
+  $('weather-end').textContent=presetTimeOfDay(preset,last)+(last>=1440?' next day':'');
+  $('weather-minute').setAttribute('aria-valuetext',presetTimeOfDay(preset,simulationMinute));
+  $('weather-clock').textContent=`Conditions for ${presetTimeOfDay(preset,simulationMinute)} · simulation clock ${formatTime(snapshot.timestamp,'America/Los_Angeles')}`;
   for(const slider of $('weather-sliders').querySelectorAll('input')){
     const {heightKey,field}=slider.dataset;
     const value=overrides[heightKey]?.[field]??snapshot.readings[heightKey][field];
