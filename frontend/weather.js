@@ -28,6 +28,29 @@ const anchors = {
 };
 export const presetNames = Object.freeze([...Object.keys(anchors), 'afternoon']);
 const hour = 3600000;
+/** Project policy, not a guarantee of NWS publication frequency: reject issuance
+ * older than 6 hours and timestamps more than 5 minutes ahead of the request clock.
+ */
+export const MAX_FORECAST_ISSUANCE_AGE_MS = 6*hour;
+const MAX_ISSUANCE_CLOCK_SKEW_MS = 5*60000;
+const issuanceFields=['updateTime','generatedAt','updated'];
+/** Valid time (hourly period), source issue/update time, and fetch time are distinct.
+ * Use NWS updateTime when available, then generatedAt, then updated. An invalid
+ * primary field is rejected rather than silently replaced by a secondary field.
+ */
+export function validateForecastIssuance(properties, nowMs, maxAgeMs=MAX_FORECAST_ISSUANCE_AGE_MS) {
+  if(!properties||typeof properties!=='object'||!Number.isFinite(nowMs)||
+     !Number.isFinite(maxAgeMs)||maxAgeMs<=0)throw new TypeError('Invalid NWS issuance validation input');
+  const field=issuanceFields.find(key=>Object.hasOwn(properties,key));
+  if(!field)throw new Error('NWS forecast issuance/update timestamp missing');
+  const value=properties[field];
+  if(typeof value!=='string'||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(value)||
+     !Number.isFinite(Date.parse(value)))throw new Error('Invalid NWS forecast issuance/update timestamp');
+  const issuedMs=Date.parse(value),age=nowMs-issuedMs;
+  if(age < -MAX_ISSUANCE_CLOCK_SKEW_MS)throw new Error('NWS forecast issuance time is in the future');
+  if(age > maxAgeMs)throw new Error('NWS forecast issuance is too old');
+  return {issued_at:new Date(issuedMs).toISOString(),issuance_source:field,issuance_age_minutes:Math.max(0,age/60000)};
+}
 const smooth = x => x*x*(3-2*x);
 // Each preset is anchored at the Fresno local time its story describes (PST = UTC−8).
 const anchorTimes = Object.freeze({
@@ -194,34 +217,43 @@ export async function loadOrchardForecast(id, profile, {nowMs=Date.now(), fetchI
     if(!response.ok)throw new Error(`NWS HTTP ${response.status}`);
     return response.json();
   };
-  let rows, fetched_at=null, error=null, source='nws';
+  let rows, fetched_at=null, issued_at=null, issuance_source=null, issuance_age_minutes=null, error=null, source='nws';
   try {
     const point = await request(`https://api.weather.gov/points/${location.latitude},${location.longitude}`);
     const url = new URL(point.properties.forecastHourly);
     if(url.origin!=='https://api.weather.gov'||!/^\/gridpoints\/[A-Z]+\/\d+,\d+\/forecast\/hourly$/.test(url.pathname)) throw new Error('Unexpected NWS hourly URL');
     const result = await request(url.href);
+    const issuance=validateForecastIssuance(result.properties,nowMs);
+    ({issued_at,issuance_source,issuance_age_minutes}=issuance);
     const current = result.properties.periods.filter(period=>Date.parse(period.startTime)>=start);
     // The API can start at the next hour. Leave that first gap explicit rather than backfilling it.
     rows=current.slice(0,24).map(normalizeHourly);
     if(!covers(rows) && !(rows.length>=23 && rows.every((row,index)=>Date.parse(row.timestamp)===start+(index+1)*hour)))throw new Error('Incomplete or noncontiguous NWS coverage');
     fetched_at=new Date(nowMs).toISOString();
-    try{cache?.setItem(key,JSON.stringify({rows,fetched_at}));}catch{}
+    try{cache?.setItem(key,JSON.stringify({rows,fetched_at,issued_at,issuance_source}));}catch{}
   }catch(cause){
     if(signal?.aborted)throw cause;
     error=cause.message; source='synthetic';
     try{
       const saved=JSON.parse(cache?.getItem(key)??'null');
       const remaining=saved?.rows?.filter(row=>Date.parse(row.timestamp)>=start);
-      if(remaining?.length && Date.parse(saved.fetched_at)<=nowMs && nowMs-Date.parse(saved.fetched_at)<=6*hour &&
+      // Existing v1 cache entries lack issuance and are intentionally ineligible.
+      if(remaining?.length && typeof saved.fetched_at==='string' &&
+         Number.isFinite(Date.parse(saved.fetched_at)) &&
+         Date.parse(saved.fetched_at)<=nowMs && nowMs-Date.parse(saved.fetched_at)<=6*hour &&
+         issuanceFields.includes(saved.issuance_source) &&
          remaining.every((row,index)=>Date.parse(row.timestamp)===Date.parse(remaining[0].timestamp)+index*hour) &&
          Date.parse(remaining[0].timestamp)<=start+hour && remaining.length>=20){
+        // Recheck the ORIGINAL NWS issue time, never the cache read/retrieval time.
+        const issuance=validateForecastIssuance({[saved.issuance_source]:saved.issued_at},nowMs);
+        ({issued_at,issuance_source,issuance_age_minutes}=issuance);
         rows=remaining;fetched_at=saved.fetched_at;source='cached_nws';
       }
     }catch{}
-    if(source==='synthetic'){rows=offlineRows(start,location);fetched_at=null;}
+    if(source==='synthetic'){rows=offlineRows(start,location);fetched_at=null;issued_at=null;issuance_source=null;issuance_age_minutes=null;}
   }
   const snapshots=rows.map(row=>evaluateSnapshot({timestamp:row.timestamp,scenario_name:`${source} · modeled orchard heights`,orchard_block:location.block,readings:estimateLayers(row,location),pesticide_profile:profile}));
   validateForecast(snapshots,60);
-  return {location_id:id,location_label:location.label,source,fetched_at,error,time_zone:location.zone,interval_minutes:60,snapshots,window:forecastWindow(snapshots,nowMs,location.zone)};
+  return {location_id:id,location_label:location.label,source,fetched_at,issued_at,issuance_source,issuance_age_minutes,error,time_zone:location.zone,interval_minutes:60,snapshots,window:forecastWindow(snapshots,nowMs,location.zone)};
 }
 
