@@ -41,3 +41,13 @@ const evaluation = evaluate({ ...weatherPayload, pesticide_profile: getProfile('
 The engine evaluates both heights, inversion and shear, evaporation, four presets, and recorded spray sessions. It always returns `evaluation.caught_hidden_risk` (contract v1.1; legacy v1 imports still work). `evaluate` returns STOP for invalid input. It is synchronous and makes no network requests.
 
 See [docs/DECISION_ENGINE.md](docs/DECISION_ENGINE.md) for thresholds, science sources, limitations, label overrides, API examples, session persistence responsibilities, and wet-bulb calculations. Run `npm run benchmark` for local timings. The default site demo now uses this engine, not separate UI-only risk rules.
+
+## Production NWS view and explicit simulation (November 2026)
+
+The normal application entry point now starts in **forecast screening mode**, selecting Fresno, CA by default and requesting regional NWS hourly forecasts. It refreshes every 30 seconds and exposes the location selector even when the simulator is hidden. Supported California city IDs: `fresno`, `modesto`, `merced`, `bakersfield`, `chico`, and `yuba_city`. Both the weather model and selected city use `America/Los_Angeles` for display; city coordinates are approximate city centers, not verified orchard sensors.
+
+**Important:** The 5 ft and 30 ft values shown in the forecast view are *estimates from an NWS regional forecast*, not measurements. The GO/CAUTION/STOP values there are **modeled forecast screening**, never on-site clearance. When the weather service and valid selected-city cache are both unavailable, the production screen displays **DATA UNAVAILABLE — DO NOT SPRAY** rather than substituting synthetic data. Recent cached NWS forecasts are labeled as cached, and cached entries remain scoped to their city.
+
+Use `http://localhost:5173/?mode=demo` for the explicitly simulated hackathon walkthrough, controls, and scenario sliders. This deliberate URL mode is distinct from normal production startup; using `window.CanopyGuard.useDemo('trap')` explicitly also switches to demonstration mode. Integrators can still call `window.CanopyGuard.connect(...)` to provide measured live observations, which are labeled as connected sensor data.
+
+The default location selection, startup request, 30-second refresh, stale-response rejection, and source display belong to `frontend/app.js`. Forecast location metadata and city-scoped persistence live in `frontend/weather.js`. These modifications do not validate the forecasting model or pesticide label compliance.

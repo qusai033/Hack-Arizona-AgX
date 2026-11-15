@@ -1,9 +1,16 @@
 import { evaluateSnapshot, createSession, startSpray, finishSpray, getProfile } from './engine/index.js';
 import { nextWindow, formatTime, validateForecast } from './timeline.js';
 
+/** Stable city IDs shared by the selector, NWS fetches, cache, and audit source labels.
+ * Coordinates locate city centers, not verified orchard sensor installations.
+ */
 export const locations = Object.freeze({
-  fresno: Object.freeze({ latitude:36.7378, longitude:-119.7871, zone:'America/Los_Angeles', block:'Fresno, CA orchard' }),
-  willcox: Object.freeze({ latitude:32.2529, longitude:-109.8326, zone:'America/Phoenix', block:'Willcox, AZ orchard' })
+  fresno: Object.freeze({label:'Fresno, CA',latitude:36.7378,longitude:-119.7871,zone:'America/Los_Angeles',block:'Fresno, CA · forecast area'}),
+  modesto: Object.freeze({label:'Modesto, CA',latitude:37.6391,longitude:-120.9969,zone:'America/Los_Angeles',block:'Modesto, CA · forecast area'}),
+  merced: Object.freeze({label:'Merced, CA',latitude:37.3022,longitude:-120.4830,zone:'America/Los_Angeles',block:'Merced, CA · forecast area'}),
+  bakersfield: Object.freeze({label:'Bakersfield, CA',latitude:35.3733,longitude:-119.0187,zone:'America/Los_Angeles',block:'Bakersfield, CA · forecast area'}),
+  chico: Object.freeze({label:'Chico, CA',latitude:39.7285,longitude:-121.8375,zone:'America/Los_Angeles',block:'Chico, CA · forecast area'}),
+  yuba_city: Object.freeze({label:'Yuba City, CA',latitude:39.1404,longitude:-121.6169,zone:'America/Los_Angeles',block:'Yuba City, CA · forecast area'})
 });
 const compass = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -157,5 +164,5 @@ export async function loadOrchardForecast(id, profile, {nowMs=Date.now(), fetchI
   }
   const snapshots=rows.map(row=>evaluateSnapshot({timestamp:row.timestamp,scenario_name:`${source} · modeled orchard heights`,orchard_block:location.block,readings:estimateLayers(row,location),pesticide_profile:profile}));
   validateForecast(snapshots,60);
-  return {source,fetched_at,error,time_zone:location.zone,interval_minutes:60,snapshots,window:forecastWindow(snapshots,nowMs,location.zone)};
+  return {location_id:id,location_label:location.label,source,fetched_at,error,time_zone:location.zone,interval_minutes:60,snapshots,window:forecastWindow(snapshots,nowMs,location.zone)};
 }
