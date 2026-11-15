@@ -32,7 +32,9 @@ test('CSV carries evidence and escapes spreadsheet formulas and quotes',()=>{
   assert.ok(csv.includes('"\'=Example(""x"")"'));
   assert.match(csv,/INVERSION_DETECTED/);
   assert.match(csv,/America\/Phoenix/);
-  assert.match(csv,/"true"\r\n$/);
+  assert.ok(csv.includes('"true"'));
+  assert.ok(csv.includes('"Snapshot JSON"'));
+  assert.match(csv,/\r\n$/);
 });
 test('post-spray alert uses treatment rule and observation telemetry',()=>{
   const row={snapshot:simulateWeather('afternoon',135)};
