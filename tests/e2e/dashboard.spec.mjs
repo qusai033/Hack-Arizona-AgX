@@ -438,3 +438,85 @@ test('late response for the previous forecast city cannot replace the newly sele
   expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+
+test('forecast profile controls re-screen NWS weather, retain the profile through city changes, and do not offer fake treatment sessions',async({page})=>{
+  const blocked=await isolateNetwork(page,['https://api.weather.gov']);
+  const errors=captureErrors(page);
+  await stubNws(page,{
+    points:route=>route.fulfill({status:200,contentType:'application/geo+json',body:JSON.stringify(pointResponse())}),
+    hourly:route=>route.fulfill({status:200,contentType:'application/geo+json',body:JSON.stringify(hourlyResponse())})
+  });
+  await page.goto('/');
+  await expect(page.locator('#weather-network')).toContainText('Fresno, CA: NWS model retrieved',{timeout:20000});
+  await expect(page.locator('#profile-preset')).toBeEnabled();
+  await expect(page.locator('#volatility')).toBeEnabled();
+  await expect(page.locator('#nozzle')).toBeEnabled();
+  await expect(page.locator('#effective-limits')).toContainText('Modeled screening limits');
+  await expect(page.locator('#profile-hint')).toContainText('NWS-derived heights are MODELED');
+  await expect(page.locator('#session-state')).toHaveText('NOT CONNECTED');
+  await expect(page.locator('#demo-session-actions')).toBeHidden();
+  await expect(page.locator('#session-demo-disclaimer')).toBeHidden();
+  await expect(page.locator('#session-production-notice')).toBeVisible();
+  await expect(page.locator('#demo-entry')).toBeVisible();
+  await expect(page.locator('#forecast-entry')).toBeHidden();
+
+  await page.locator('#profile-preset').selectOption('volatile_formulation');
+  await expect(page.locator('#profile-name')).toContainText('Volatile Ester');
+  await expect(page.locator('#volatility')).toHaveValue('HIGH');
+  await expect(page.locator('#effective-limits')).toContainText('Inversion STOP >0.2°F');
+  const firstEvent=await page.evaluate(()=>{
+    const rows=window.CanopyGuardAudit.list().filter(row=>row.event==='PROFILE_CHANGED'&&row.source==='forecast');
+    const row=rows.at(-1);
+    return row&&{engine:row.evidence?.engine_version,profile:row.snapshot.pesticide_profile,
+      matched:row.evidence?.reproduced_with_current_engine,
+      threshold:row.evidence?.effective_thresholds?.inversionStopAbove,
+      provenance:row.evidence?.provenance};
+  });
+  expect(firstEvent).toBeTruthy();
+  expect(firstEvent.profile.volatility_class).toBe('HIGH');
+  expect(firstEvent.threshold).toBe(0.2);
+  expect(firstEvent.matched).toBe(true);
+  expect(firstEvent.engine).toBeTruthy();
+  expect(firstEvent.provenance.location_id).toBe('fresno');
+
+  // A custom change uses the same existing evaluator and remains selected.
+  await page.locator('#nozzle').selectOption('FINE');
+  await expect(page.locator('#profile-preset')).toHaveValue('custom');
+  await expect(page.locator('#effective-limits')).toContainText('Speed-shear STOP ≥4.5 mph');
+  await page.getByLabel('Forecast city').selectOption('merced');
+  await expect(page.locator('#weather-network')).toContainText('Merced, CA: NWS model retrieved',{timeout:20000});
+  await expect(page.locator('#profile-preset')).toHaveValue('custom');
+  await expect(page.locator('#volatility')).toHaveValue('HIGH');
+  await expect(page.locator('#nozzle')).toHaveValue('FINE');
+  const before=await page.evaluate(()=>window.CanopyGuardAudit.list().length);
+  await page.getByRole('button',{name:'Refresh NWS forecast',exact:true}).click();
+  await expect(page.locator('#weather-network')).toContainText('Merced, CA: NWS model retrieved',{timeout:20000});
+  await expect(page.locator('#nozzle')).toHaveValue('FINE');
+  await expect(page.locator('#volatility')).toHaveValue('HIGH');
+  await expect.poll(async()=>page.evaluate(()=>window.CanopyGuardAudit.list().length)).toBeGreaterThan(before);
+  const after=await page.evaluate(()=>window.CanopyGuardAudit.list().at(-1));
+  expect(after.snapshot.pesticide_profile.nozzle_droplet_size).toBe('FINE');
+  expect(after.snapshot.pesticide_profile.volatility_class).toBe('HIGH');
+  expect(after.evidence.provenance.location_id).toBe('merced');
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('visible links switch between production and interactive demo, revealing session controls only in demo',async({page})=>{
+  const blocked=await isolateNetwork(page);
+  const errors=captureErrors(page);
+  await page.goto('/?mode=demo');
+  await expect(page.locator('#demo-entry')).toBeHidden();
+  await expect(page.locator('#forecast-entry')).toBeVisible();
+  await expect(page.locator('#demo-session-actions')).toBeVisible();
+  await expect(page.locator('#session-production-notice')).toBeHidden();
+  await expect(page.locator('#session-demo-disclaimer')).toBeVisible();
+  await expect(page.locator('#session-start')).toBeDisabled(); // Default trap is STOP.
+  await page.locator('[data-scenario="clear"]').click();
+  await expect(page.locator('#session-start')).toBeEnabled();
+  await page.locator('#session-start').click();
+  await expect(page.locator('#session-state')).toContainText('SPRAYING');
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});
