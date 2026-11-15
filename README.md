@@ -90,3 +90,8 @@ In the default NWS view, **Screening preset**, **Pesticide volatility**, and **N
 **No connected treatment session** is shown in non-demo modes. Demo-only Start/Finish/Previous treatment/Reset actions are hidden rather than presented as broken controls. The banner offers **Try interactive demo** and, in demo mode, **Return to NWS forecast**. The demo remains separate from real pesticide applications; no treatment is inferred from an NWS model.
 
 The NWS view models both heights from regional conditions: **no field sensor data or actual application history is claimed**. A modeled GO result is not authorization to spray. The imported snapshot mode remains read-only unless a verified live adapter offers `evaluateProfile`.
+
+
+## Standalone Arizona weather viewer
+
+A separate, general-purpose sample-data viewer is available at `http://localhost:5173/weather-viewer.html` after `npm run dev`. It displays clearly labeled synthetic example records, source timestamps, coordinates, and basic data-quality checks. It is not a live weather feed, makes no interpolated estimates, and is not connected to the CanopyGuard evaluator. See [docs/ARIZONA_WEATHER_VIEWER.md](docs/ARIZONA_WEATHER_VIEWER.md).

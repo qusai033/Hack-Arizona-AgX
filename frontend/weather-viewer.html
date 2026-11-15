@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Standalone Arizona weather-data viewer using clearly labeled synthetic sample records.">
+  <title>Arizona Weather Data Viewer · CanopyGuard</title>
+  <link rel="stylesheet" href="./weather-viewer.css">
+  <script type="module" src="./weather-viewer-page.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="top">
+      <p class="eyebrow">STANDALONE DATA EXPLORER</p>
+      <h1>Arizona weather overview</h1>
+      <p class="lede">A simple geographic view of example weather records, with source timestamps and data-quality checks.</p>
+      <p class="notice"><strong>Sample data only.</strong> These values are synthetic fixtures, not live observations, forecasts, or measurements. No weather values are estimated between locations.</p>
+      <p><a href="./index.html">← Return to CanopyGuard dashboard</a></p>
+    </header>
+    <section class="layout" aria-label="Weather viewer">
+      <section class="panel map-panel">
+        <div class="panel-head"><div><p class="eyebrow">LOCATION OVERVIEW</p><h2>Arizona sample locations</h2></div><span class="pill">Not to scale</span></div>
+        <svg class="map" viewBox="0 0 600 470" role="img" aria-labelledby="map-title map-desc">
+          <title id="map-title">Schematic map of Arizona sample locations</title>
+          <desc id="map-desc">Five labeled points show the locations represented by synthetic sample records. The outline is schematic and not a navigation map.</desc>
+          <path class="state-shape" d="M110 35 L480 35 L468 168 L448 168 L445 310 L420 310 L416 430 L110 430 Z"/>
+          <g class="map-grid"><path d="M110 130H470M110 225H460M110 320H440M205 35V430M300 35V430M395 35V430"/></g>
+          <g id="map-points">
+            <circle cx="315" cy="300" r="10" data-place="tucson"/><circle cx="235" cy="270" r="10" data-place="phoenix"/>
+            <circle cx="270" cy="145" r="10" data-place="flagstaff"/><circle cx="135" cy="320" r="10" data-place="yuma"/>
+            <circle cx="365" cy="205" r="10" data-place="show-low"/>
+          </g>
+          <g class="map-labels"><text x="330" y="305">Tucson</text><text x="190" y="257">Phoenix</text><text x="282" y="135">Flagstaff</text><text x="90" y="345">Yuma</text><text x="380" y="202">Show Low</text></g>
+          <text class="map-foot" x="115" y="455">Schematic placement · not for navigation</text>
+        </svg>
+        <p class="muted">Select a location to inspect its sample record. Point placement is illustrative; the coordinates are stored separately in each record.</p>
+      </section>
+      <section class="panel details">
+        <p class="eyebrow">SELECTED RECORD</p><h2 id="selected-name">Tucson</h2>
+        <p id="selected-coordinates" class="muted"></p>
+        <dl id="weather-values" class="values"></dl>
+        <div class="source-block"><span class="eyebrow">SOURCE</span><p id="selected-source">Synthetic demo fixture</p><span class="eyebrow">OBSERVED AT</span><p id="selected-time"></p></div>
+        <p id="record-quality" class="quality" role="status"></p>
+      </section>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><div><p class="eyebrow">DATA QUALITY</p><h2>Record validation</h2></div><span id="quality-count" class="pill"></span></div>
+      <p class="muted">Checks cover required fields, broad numeric bounds, duplicate IDs, timestamps, and a three-hour freshness window. A failed check is shown; missing values are never filled in.</p>
+      <ul id="quality-list" class="quality-list"></ul>
+    </section>
+    <footer>Independent viewer · No connection to application recommendations or the GO / CAUTION / STOP evaluator.</footer>
+  </main>
+</body>
+</html>
