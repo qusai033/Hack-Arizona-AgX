@@ -124,3 +124,10 @@ A separate, general-purpose sample-data viewer is available at `http://localhost
 ## Explicit evaluation-time evidence (Issue #46)
 
 The built-in demo controller captures an explicit `evaluationTimeMs` when it creates each evaluated snapshot; in demo mode this is the independent deterministic simulation clock. NWS forecasting and profile re-screening capture the evaluation invocation clock separately from forecast valid, issuance, and retrieval times. The application threads that exact context into version-2 audit evidence, persistence, `Evaluation UTC` CSV, and activity/print views. It never substitutes action `recorded_at` for the time supplied to the evaluator. Historical or externally evaluated records retain unknown evaluation times rather than invented timestamps. See [docs/AUDIT_EVIDENCE.md](docs/AUDIT_EVIDENCE.md) and `tests/evaluation-time.test.mjs`.
+
+
+## Per-height evaluator quality and rule provenance (Issue #45)
+
+The built-in evaluator now checks 5 ft and 30 ft readings independently, distinguishes input-integrity fail-safe STOP from actual upper-height drift hazards, and exposes structured `data_quality` and per-rule `provenance`, `source_heights`, and upper/cross-height flags. Rule severity is ordered STOP before CAUTION, and hidden-risk credit requires fully valid input plus a qualifying upper-height STOP. The decision banner displays the actual built-in engine version and qualified input/source-height metadata; external/imported results remain unverified. Regional NWS heights are still **modeled**, never measured orchard sensor data. **Input VALID** means structural/time checks passed when supplied, not physical sensor accuracy or spray permission. Historical audit evidence and complete CSV columns remain intact.
+
+See [docs/ENGINE_QUALITY_PROVENANCE.md](docs/ENGINE_QUALITY_PROVENANCE.md) for the metadata schema, time roles, safe presentation rules and regression checks. Missing-sensor UI controls and numeric policy changes are separate issues (#43 and #44).

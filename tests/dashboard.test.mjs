@@ -54,7 +54,14 @@ test('forecast handles no GO window, excludes expired windows and clips current 
   const f=demoForecast(example.pesticide_profile),start=Date.parse('2026-11-15T18:00:00Z');
   assert.equal(nextWindow(f,30,start).hours,3.5);
   assert.equal(nextWindow(f,30,Date.parse('2026-11-16T20:00:00Z')),null);
-  assert.equal(nextWindow(f.map(s=>({...s,evaluation:{...s.evaluation,multi_height_status:'STOP',caught_hidden_risk:s.evaluation.single_station_5ft_status==='GO'}}))),null);
+  // Use actual evaluated STOP decisions, not a fabricated status paired
+  // with contradictory rules and independent input-quality metadata.
+  const allStop=f.map(s=>evaluateDemo({...s,readings:{
+    ...s.readings,canopy_30ft:{...s.readings.canopy_30ft,
+      wind_speed_mph:Math.max(12.4,s.readings.canopy_30ft.wind_speed_mph)}
+  }},s.pesticide_profile));
+  assert.ok(allStop.every(s=>s.evaluation.multi_height_status==='STOP'));
+  assert.equal(nextWindow(allStop),null);
 });
 test('dynamic strings are HTML-escaped',()=>{
   assert.equal(escapeHTML('<img onerror="bad()">'), '&lt;img onerror=&quot;bad()&quot;&gt;');
