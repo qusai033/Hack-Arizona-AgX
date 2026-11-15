@@ -33,6 +33,22 @@ export function buildAuditEvidence(snapshot, {
   }
   if('session' in context) assertSession(context.session);
   const builtIn=builtInSources.has(source);
+  // An externally evaluated record has no verified built-in evaluation clock.
+  // For built-in results, use ONLY the time passed into the source evaluator.
+  // Legacy records without that context retain null; no backfilling from either
+  // the snapshot valid/observation time or later action.recorded_at.
+  const evaluationTimeMs=context.evaluationTimeMs;
+  let evaluated_at=null;
+  if(builtIn && evaluationTimeMs!==undefined){
+    if(!Number.isSafeInteger(evaluationTimeMs)||evaluationTimeMs<0 ||
+       !Number.isFinite(new Date(evaluationTimeMs).getTime())){
+      throw new TypeError('Invalid explicit evaluationTimeMs for audit evidence.');
+    }
+    evaluated_at=new Date(evaluationTimeMs).toISOString();
+    if(source==='demo' && evaluated_at!==snapshot.timestamp){
+      throw new Error('Demo evaluator time must match the deterministic simulation clock.');
+    }
+  }
   let engine_version=null, effective_thresholds=null, diagnostics=null, reproduced_with_current_engine=false;
   if(builtIn){
     const examined=analyze(snapshot,context);
@@ -64,7 +80,7 @@ export function buildAuditEvidence(snapshot, {
       simulation_clock_at:source==='demo'?snapshot.timestamp:null,
       forecast_valid_at:source==='forecast'?snapshot.timestamp:null,
       observation_at:source==='live'?snapshot.timestamp:null,
-      evaluated_at:null // No independent evaluator timestamp is captured by this app.
+      evaluated_at
     }
   };
 }
