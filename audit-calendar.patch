@@ -1,0 +1,702 @@
+From 7845d591f8910f2ac411b5d0d94ee1d5c5a687a2 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 15 Nov 2026 22:10:58 +0000
+Subject: [PATCH] Turn the audit log into a calendar-based daily weather
+ history
+
+- Month calendar (weeks, Sunday first) with prev/next, month picker and
+  Today; today outlined, days with records marked by their worst decision
+  and record count.
+- Clicking a day opens that day's record: 5 ft / 30 ft high-low, wind range
+  and prevailing direction, humidity, largest inversion and shear, hidden
+  risks, conditions, pesticide, treatment, sources, then that day's rows in
+  the existing audit table. Days without records say so; nothing is
+  estimated. Precipitation is shown as not recorded (no sensor for it).
+- Records are filed by observation date in the zone stored with each record,
+  so days never mix; existing records are kept and filed by their own dates.
+- Duplicates: an observation with the same data and timestamp is stored once
+  (append returns the existing record); identical copies saved earlier by
+  the 15-second heartbeat are shown once. Storage is unchanged otherwise.
+- Export / printable report scope: selected day, ticked days, month, or all
+  history. CSV keeps its columns and adds Observation date.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01GM9hhDcKCyyqoEnyeRVmi7
+---
+ docs/AUDIT_INTEGRATION.md     |   8 +-
+ frontend/audit-calendar.css   |  71 ++++++++++++++
+ frontend/audit-calendar.js    |  99 +++++++++++++++++++
+ frontend/audit-ui.js          | 174 +++++++++++++++++++++++++++++++---
+ frontend/audit.js             |  40 ++++++--
+ frontend/index.html           |  17 +++-
+ tests/audit-calendar.test.mjs |  84 ++++++++++++++++
+ tests/audit.test.mjs          |   2 +-
+ 8 files changed, 471 insertions(+), 24 deletions(-)
+ create mode 100644 frontend/audit-calendar.css
+ create mode 100644 frontend/audit-calendar.js
+ create mode 100644 tests/audit-calendar.test.mjs
+
+diff --git a/docs/AUDIT_INTEGRATION.md b/docs/AUDIT_INTEGRATION.md
+index 3938076..5d2e40c 100644
+--- a/docs/AUDIT_INTEGRATION.md
++++ b/docs/AUDIT_INTEGRATION.md
+@@ -1,6 +1,12 @@
+ # Audit and alert integration
+ 
+-The dashboard appends accepted evaluations on status, scenario, or session changes and every 15 seconds. Repeated scenario clicks create explicit records. Each entry contains the observation timestamp from the shared snapshot and a separate UTC recording timestamp, along with its source and treatment summary. Exports use the dashboard's active timezone and the selected filter. The ground-only comparison in the walkthrough is presentation state. The canopy reveal records the actual evaluation.
++The dashboard appends accepted evaluations on status, scenario, or session changes and checks every 15 seconds. An observation with the same data and timestamp as one already stored is not stored again (`append` returns the existing record with `duplicate: true`); records saved before this rule are kept, and identical copies are shown once.
++
++## Daily weather history (calendar)
++
++The audit panel shows the log as a month calendar. Each record belongs to one date: its observation timestamp's calendar date in the time zone stored with the record (`zone`; older records use the dashboard's zone). Days with records show a dot in the colour of their worst decision and a count; today is outlined. Selecting a day shows that day's record: 5 ft and 30 ft high/low temperature, wind range and prevailing direction, humidity range, largest inversion and shear, hidden risks, conditions, pesticide, treatment and sources, followed by that day's rows in the audit table. Values come only from that day's records; a day without records says so and is never filled with estimates. Precipitation is shown as not recorded because the sensors do not measure it.
++
++The Export selector next to *Export PCA Audit Log (CSV)* and the printable report chooses the selected day, the ticked days (tick boxes on days, or *Week* to tick a week), the month on screen, or all history. The CSV keeps its columns and adds `Observation date` at the end. Filters (STOP, inversions, hidden risks) apply to the calendar, the day record and exports. `frontend/audit-calendar.js` holds the date grouping and day summary. Each entry contains the observation timestamp from the shared snapshot and a separate UTC recording timestamp, along with its source and treatment summary. Exports use the dashboard's active timezone and the selected filter. The ground-only comparison in the walkthrough is presentation state. The canopy reveal records the actual evaluation.
+ 
+ `frontend/audit.js` exports `createAuditLog`, `filterRecords`, `auditCSV`, and `alertText`. The browser uses one storage key per record and exposes no update or delete operation. Persistence depends on browser storage. If storage is unavailable or fills up, the interface identifies records as temporary. Browser owners can alter or clear local storage. Production evidence requires a server-side append-only audit store with access controls and retention.
+ 
+diff --git a/frontend/audit-calendar.css b/frontend/audit-calendar.css
+new file mode 100644
+index 0000000..51a1e1f
+--- /dev/null
++++ b/frontend/audit-calendar.css
+@@ -0,0 +1,71 @@
++/* Daily weather history: calendar + day record inside the audit panel. Uses the site's tokens from styles.css. */
++#audit-panel .section-heading{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
++#audit-panel #audit-count{margin:0;color:var(--muted);font-size:14px}
++.export-scope{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600}
++.export-scope select{min-height:40px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 8px;font:inherit;font-weight:500}
++
++.audit-calendar-layout{display:grid;grid-template-columns:minmax(420px,1.05fr) 1fr;gap:22px;margin-top:16px;align-items:start}
++.audit-calendar,.audit-day{border:1px solid var(--line);border-radius:var(--radius);background:#fff;padding:16px}
++
++.calendar-nav{display:flex;align-items:center;gap:8px;margin-bottom:12px}
++.calendar-nav h3{flex:1;margin:0;font-size:1.15rem;text-align:center}
++.calendar-nav .outline-button{min-height:38px;padding:0 12px}
++.calendar-nav input[type=month]{min-height:38px;border:1px solid var(--line);border-radius:8px;padding:0 8px;font:inherit;color:var(--ink);background:#fff}
++
++.calendar-grid{display:grid;gap:4px}
++.cal-row{display:grid;grid-template-columns:44px repeat(7,1fr);gap:4px}
++.cal-head span{font-size:12px;font-weight:700;color:var(--muted);text-align:center;padding:4px 0;letter-spacing:.04em}
++.cal-week-label{border:1px solid transparent;border-radius:8px;background:transparent;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;padding:0}
++.cal-week-label:not(:disabled):hover{border-color:var(--line);background:var(--green-soft);color:var(--ink)}
++.cal-week-label:disabled{opacity:.35;cursor:default}
++
++.cal-day{position:relative;min-height:62px;border:1px solid var(--line);border-radius:9px;background:#fff}
++.cal-day.other-month{background:var(--paper);opacity:.6}
++.cal-day.has-data{background:#fbfdf9}
++.cal-day.today{border:2px solid var(--green)}
++.cal-day.today .cal-num{background:var(--green);color:#fff}
++.cal-day.selected{box-shadow:0 0 0 3px #b9d8c2;border-color:var(--green)}
++.cal-open{all:unset;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;width:100%;height:100%;min-height:60px;padding:6px 7px;cursor:pointer;border-radius:8px}
++.cal-open:focus-visible{outline:3px solid #458565;outline-offset:1px}
++.cal-num{align-self:flex-start;min-width:24px;height:24px;border-radius:12px;display:grid;place-items:center;font-size:13px;font-weight:700;color:var(--ink)}
++.cal-day.future .cal-num{color:var(--muted);font-weight:500}
++.cal-mark{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--muted)}
++.cal-check{position:absolute;top:6px;right:6px;width:16px;height:16px;margin:0;accent-color:var(--green);cursor:pointer}
++
++.dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:-1px}
++.dot.STOP{background:var(--red)}.dot.CAUTION{background:#d9a21b}.dot.GO{background:var(--green)}
++.calendar-footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--muted)}
++.calendar-legend .dot{margin-left:6px}
++#cal-clear{font-size:12px}
++
++.day-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
++.day-head h3{margin:2px 0 0;font-size:1.25rem}
++.day-nav{display:flex;gap:6px}
++.day-nav .outline-button{min-height:36px;padding:0 10px;font-size:13px}
++.day-decision{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0 12px;font-size:13px;color:var(--muted)}
++.day-decision .result-badge{padding:8px 12px}
++.day-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
++.day-stat{border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:var(--paper)}
++.day-stat span{display:block;font-size:12px;color:var(--muted)}
++.day-stat strong{display:block;font-size:17px;margin-top:2px}
++.day-stat small{display:block;font-size:11px;color:var(--muted);margin-top:2px}
++.day-meta{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:14px 0 0;font-size:13px}
++.day-meta dt{color:var(--muted);font-weight:600}
++.day-meta dd{margin:0;overflow-wrap:anywhere}
++.day-empty{margin-top:14px;padding:18px;border:1px dashed var(--line);border-radius:10px;background:var(--paper)}
++.day-empty p{margin:6px 0 12px;color:var(--muted);font-size:14px}
++
++.audit-records-title{margin:22px 0 0;font-size:1rem}
++.audit-empty{color:var(--muted);text-align:center;padding:22px!important}
++#audit-print .report-day{margin-top:14pt;border-bottom:2px solid #333}
++/* Narrow screens (the site's QA checks 390 px and 768 px): stack the calendar above the day record. */
++@media (max-width:980px){.audit-calendar-layout{grid-template-columns:minmax(0,1fr)}}
++@media (max-width:560px){
++  .audit-calendar,.audit-day{padding:10px}
++  .cal-row{grid-template-columns:28px repeat(7,minmax(0,1fr));gap:3px}
++  .cal-week-label{font-size:0}.cal-week-label::after{content:'✓';font-size:11px}
++  .cal-day,.cal-open{min-height:46px}.cal-open{padding:4px}
++  .cal-check{top:3px;right:3px;width:13px;height:13px}
++  .calendar-nav{flex-wrap:wrap}.calendar-nav input[type=month]{flex:1;min-width:0}
++  .day-stats{grid-template-columns:minmax(0,1fr)}
++}
+diff --git a/frontend/audit-calendar.js b/frontend/audit-calendar.js
+new file mode 100644
+index 0000000..b89d09c
+--- /dev/null
++++ b/frontend/audit-calendar.js
+@@ -0,0 +1,99 @@
++// Calendar view of the audit log: pure helpers (no DOM), so they can be tested in Node.
++import { deltas } from './contract.js';
++import { recordDay, hiddenRisk, recordFingerprint } from './audit.js';
++
++const RANK = { GO: 0, CAUTION: 1, STOP: 2 };
++
++/** 'YYYY-MM' + offset in months -> 'YYYY-MM' */
++export function shiftMonth(month, by) {
++  const [y, m] = month.split('-').map(Number);
++  const d = new Date(Date.UTC(y, m - 1 + by, 1));
++  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
++}
++/** 'YYYY-MM-DD' + offset in days -> 'YYYY-MM-DD' */
++export function shiftDay(day, by) {
++  const [y, m, d] = day.split('-').map(Number);
++  return new Date(Date.UTC(y, m - 1, d + by)).toISOString().slice(0, 10);
++}
++/** Weeks (Sunday first) covering a month: [{ key:'YYYY-MM-DD', day, inMonth }] x 7 per week. */
++export function monthGrid(month) {
++  const [y, m] = month.split('-').map(Number);
++  const first = new Date(Date.UTC(y, m - 1, 1));
++  const start = new Date(Date.UTC(y, m - 1, 1 - first.getUTCDay()));
++  const weeks = [];
++  for (let w = 0; w < 6; w++) {
++    const week = [];
++    for (let d = 0; d < 7; d++) {
++      const date = new Date(start.getTime() + (w * 7 + d) * 86400000);
++      week.push({ key: date.toISOString().slice(0, 10), day: date.getUTCDate(), inMonth: date.getUTCMonth() === m - 1 });
++    }
++    if (w > 3 && !week.some(cell => cell.inMonth)) break;
++    weeks.push(week);
++  }
++  return weeks;
++}
++/**
++ * Map 'YYYY-MM-DD' -> records of that day (sorted by observation time). Each record lands on exactly one date.
++ * Identical observations stored more than once (same data and timestamp, e.g. saved by the old 15-second
++ * heartbeat) are shown once; the stored records themselves are left untouched.
++ */
++export function groupByDay(records, zone) {
++  const days = new Map(), seen = new Set();
++  for (const record of records) {
++    const fingerprint = record.fingerprint ?? recordFingerprint(record);
++    if (seen.has(fingerprint)) continue;
++    seen.add(fingerprint);
++    const key = recordDay(record, zone);
++    if (!days.has(key)) days.set(key, []);
++    days.get(key).push(record);
++  }
++  for (const rows of days.values()) rows.sort((a, b) => a.snapshot.timestamp.localeCompare(b.snapshot.timestamp) || a.recorded_at.localeCompare(b.recorded_at));
++  return days;
++}
++const range = values => values.length ? { low: Math.min(...values), high: Math.max(...values) } : null;
++function prevailing(readings) {
++  const counts = new Map();
++  for (const r of readings) if (r.wind_speed_mph > 0) counts.set(r.wind_dir_cardinal, (counts.get(r.wind_dir_cardinal) ?? 0) + 1);
++  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'calm';
++}
++function height(rows, key) {
++  const readings = rows.map(r => r.snapshot.readings[key]);
++  return {
++    temp: range(readings.map(r => r.temp_f)),
++    wind: range(readings.map(r => r.wind_speed_mph)),
++    humidity: range(readings.map(r => r.humidity_pct)),
++    prevailing: prevailing(readings)
++  };
++}
++/** Everything recorded on one day, summarized from that day's records only (no estimates). */
++export function summarizeDay(rows) {
++  if (!rows?.length) return null;
++  const status = { GO: 0, CAUTION: 0, STOP: 0 };
++  let worst = 'GO';
++  for (const { snapshot } of rows) {
++    const s = snapshot.evaluation.multi_height_status;
++    status[s] = (status[s] ?? 0) + 1;
++    if (RANK[s] > RANK[worst]) worst = s;
++  }
++  const d = rows.map(r => deltas(r.snapshot));
++  const unique = list => [...new Set(list.filter(Boolean))];
++  return {
++    count: rows.length,
++    first: rows[0].snapshot.timestamp,
++    last: rows[rows.length - 1].snapshot.timestamp,
++    status, worst,
++    ground: height(rows, 'ground_5ft'),
++    canopy: height(rows, 'canopy_30ft'),
++    maxInversion: Math.max(...d.map(x => x.temperature)),
++    maxSpeedShear: Math.max(...d.map(x => Math.abs(x.speed))),
++    maxDirectionShift: Math.max(...d.map(x => x.direction)),
++    hiddenRisks: rows.filter(r => hiddenRisk(r.snapshot)).length,
++    inversions: rows.filter(r => r.snapshot.evaluation.triggered_rules.some(rule => rule.code === 'INVERSION_DETECTED')).length,
++    sources: unique(rows.map(r => r.source)),
++    blocks: unique(rows.map(r => r.snapshot.orchard_block)),
++    conditions: unique(rows.map(r => r.snapshot.scenario_name)),
++    profiles: unique(rows.map(r => r.snapshot.pesticide_profile.name)),
++    sessions: unique(rows.map(r => r.session?.state)),
++    events: unique(rows.map(r => r.event))
++  };
++}
+diff --git a/frontend/audit-ui.js b/frontend/audit-ui.js
+index cc1dde0..e8df5c1 100644
+--- a/frontend/audit-ui.js
++++ b/frontend/audit-ui.js
+@@ -1,5 +1,12 @@
+ import { deltas, escapeHTML as esc, signed } from './contract.js';
+-import { auditCSV, createAuditLog, filterRecords, hiddenRisk, localDate, reasons, alertText } from './audit.js';
++import { auditCSV, createAuditLog, filterRecords, hiddenRisk, localDate, reasons, alertText, dayKey } from './audit.js';
++import { groupByDay, monthGrid, shiftDay, shiftMonth, summarizeDay } from './audit-calendar.js';
++
++const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
++const longDate = key => new Intl.DateTimeFormat('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:'UTC'}).format(new Date(key+'T12:00:00Z'));
++const monthTitle = month => new Intl.DateTimeFormat('en-US',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(month+'-15T12:00:00Z'));
++const timeOnly = (iso, zone) => new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit',timeZone:zone}).format(new Date(iso));
++const f1 = x => x.toFixed(1);
+ 
+ export function mountAudit({zone=()=> 'America/Los_Angeles'}={}) {
+   let storage;
+@@ -8,15 +15,137 @@ export function mountAudit({zone=()=> 'America/Los_Angeles'}={}) {
+   const $=id=>document.getElementById(id);
+   let current, previous, filter='all', lastLoggedAt=0, queued, toastTimer, externalDispatch;
+   const table=$('audit-rows'), dialog=$('alert-dialog'), drawer=$('alert-drawer');
++  // Calendar state: the month on screen, the day opened, and the days ticked for a multi-day export.
++  const today=()=>dayKey(new Date(),zone());
++  let viewMonth=today().slice(0,7), selectedDay=today();
++  const checkedDays=new Set();
+   function setFilter(value) {
+     filter=value;
+     document.querySelectorAll('[data-audit-filter]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.auditFilter===filter)));
+     render();
+   }
+   function render() {
+-    const rows=filterRecords(log.list(),filter).reverse();
+-    $('audit-count').textContent=`${rows.length} displayed · ${log.isPersistent()?'Saved in this browser':'Temporary storage'} · ${zone()}`;
++    const records=filterRecords(log.list(),filter);
++    const days=groupByDay(records,zone());
++    const dayCount=[...days.keys()].length, shown=[...days.values()].reduce((n,rows)=>n+rows.length,0);
++    $('audit-count').textContent=`${shown} records · ${dayCount} ${dayCount===1?'day':'days'} with data · ${log.isPersistent()?'Saved in this browser':'Temporary storage'} · ${zone()}`;
++    renderCalendar(days);
++    renderDay(selectedDay,days.get(selectedDay),days);
++  }
++  function renderCalendar(days) {
++    const todayKey=today();
++    $('cal-title').textContent=monthTitle(viewMonth);
++    $('cal-jump').value=viewMonth;
++    const grid=$('cal-grid');
++    grid.replaceChildren();
++    const head=document.createElement('div');head.className='cal-row cal-head';head.setAttribute('role','row');
++    head.innerHTML='<span class="cal-week-label" aria-hidden="true"></span>'+WEEKDAYS.map(d=>`<span role="columnheader">${d}</span>`).join('');
++    grid.append(head);
++    for(const week of monthGrid(viewMonth)){
++      const row=document.createElement('div');row.className='cal-row';row.setAttribute('role','row');
++      const withData=week.filter(cell=>days.has(cell.key));
++      const weekButton=document.createElement('button');
++      weekButton.className='cal-week-label';weekButton.type='button';
++      weekButton.textContent='Week';
++      weekButton.title=withData.length?'Tick every day with data in this week':'No data this week';
++      weekButton.disabled=!withData.length;
++      weekButton.addEventListener('click',()=>{
++        const all=withData.every(cell=>checkedDays.has(cell.key));
++        for(const cell of withData) all?checkedDays.delete(cell.key):checkedDays.add(cell.key);
++        render();
++      });
++      row.append(weekButton);
++      for(const cell of week){
++        const rows=days.get(cell.key), summary=summarizeDay(rows);
++        const box=document.createElement('div');
++        box.setAttribute('role','gridcell');
++        box.className=['cal-day',cell.inMonth?'':'other-month',cell.key===todayKey?'today':'',cell.key===selectedDay?'selected':'',summary?'has-data':'',cell.key>todayKey?'future':''].filter(Boolean).join(' ');
++        const open=document.createElement('button');
++        open.type='button';open.className='cal-open';
++        open.setAttribute('aria-label',`${longDate(cell.key)}${cell.key===todayKey?' (today)':''}: ${summary?`${summary.count} records, worst ${summary.worst}`:'no data'}`);
++        open.setAttribute('aria-pressed',String(cell.key===selectedDay));
++        open.innerHTML=`<span class="cal-num">${cell.day}</span>${summary?`<span class="cal-mark"><i class="dot ${summary.worst}"></i>${summary.count}</span>`:''}`;
++        open.addEventListener('click',()=>openDay(cell.key));
++        box.append(open);
++        if(summary){
++          const tick=document.createElement('input');
++          tick.type='checkbox';tick.className='cal-check';tick.checked=checkedDays.has(cell.key);
++          tick.setAttribute('aria-label',`Tick ${longDate(cell.key)} for export`);
++          tick.addEventListener('change',()=>{tick.checked?checkedDays.add(cell.key):checkedDays.delete(cell.key);updateChecked();});
++          box.append(tick);
++        }
++        row.append(box);
++      }
++      grid.append(row);
++    }
++    updateChecked();
++  }
++  function updateChecked() {
++    $('cal-selected-count').textContent=checkedDays.size?`${checkedDays.size} ${checkedDays.size===1?'day':'days'} ticked`:'No days ticked';
++    $('cal-clear').hidden=!checkedDays.size;
++    const option=$('audit-export-scope').querySelector('option[value="selected"]');
++    option.textContent=`Checked days (${checkedDays.size})`;
++    option.disabled=!checkedDays.size;
++    if(!checkedDays.size&&$('audit-export-scope').value==='selected')$('audit-export-scope').value='day';
++  }
++  function openDay(key) {
++    selectedDay=key;
++    viewMonth=key.slice(0,7);
++    render();
++  }
++  function stat(label,value,note='') {
++    return `<div class="day-stat"><span>${esc(label)}</span><strong>${value}</strong>${note?`<small>${note}</small>`:''}</div>`;
++  }
++  function renderDay(key,rows,days) {
++    const box=$('audit-day'), summary=summarizeDay(rows), todayKey=today(), z=zone();
++    const nav=`<div class="day-head"><div><p class="eyebrow">${key===todayKey?'TODAY':key>todayKey?'UPCOMING DATE':'DAILY RECORD'}</p><h3>${esc(longDate(key))}</h3></div>
++      <div class="day-nav"><button type="button" class="outline-button" data-day-step="-1" aria-label="Previous day">‹ Prev day</button><button type="button" class="outline-button" data-day-step="1" aria-label="Next day">Next day ›</button></div></div>`;
++    if(!summary){
++      const recorded=[...days.keys()].sort(), latest=recorded.filter(k=>k<=todayKey).pop()??recorded.pop();
++      const filtered=filter!=='all'?' matching this filter':'';
++      box.innerHTML=`${nav}<div class="day-empty"><strong>No data available for this date${filtered}.</strong><p>${key>todayKey?'This date has not happened yet.':'Nothing was recorded on this day, so no conditions are shown. CanopyGuard never fills a day with estimated values.'}</p>${latest&&latest!==key?`<button type="button" class="outline-button" data-open-day="${latest}">Go to latest recorded day · ${esc(longDate(latest))}</button>`:''}</div>`;
++    }else{
++      const g=summary.ground,c=summary.canopy;
++      const span=(r,fmt)=>fmt(r.low)===fmt(r.high)?fmt(r.low):`${fmt(r.low)}–${fmt(r.high)}`;
++      const temp=h=>`${f1(h.temp.high)}° / ${f1(h.temp.low)}°`;
++      const wind=h=>`${span(h.wind,f1)} mph`;
++      const hum=h=>`${span(h.humidity,x=>String(Math.round(x)))}%`;
++      const inversion=summary.maxInversion>0?`${signed(summary.maxInversion)}°F`:'None';
++      const inversionNote=summary.maxInversion>0?`30 ft warmer than 5 ft · ${summary.inversions} inversion ${summary.inversions===1?'record':'records'}`:`30 ft was never warmer than 5 ft (closest ${signed(summary.maxInversion)}°F)`;
++      box.innerHTML=`${nav}
++        <div class="day-decision"><span class="result-badge ${summary.worst}">Worst decision: ${summary.worst}</span><span>STOP ${summary.status.STOP} · CAUTION ${summary.status.CAUTION} · GO ${summary.status.GO}</span></div>
++        <div class="day-stats">
++          ${stat('High / low · 5 ft',temp(g)+'F','Ground station')}
++          ${stat('High / low · 30 ft',temp(c)+'F','Above canopy')}
++          ${stat('Wind · 5 ft',wind(g),`Mostly from ${esc(g.prevailing)}`)}
++          ${stat('Wind · 30 ft',wind(c),`Mostly from ${esc(c.prevailing)}`)}
++          ${stat('Humidity · 5 ft',hum(g))}
++          ${stat('Humidity · 30 ft',hum(c))}
++          ${stat('Precipitation','Not recorded','CanopyGuard sensors do not measure rainfall')}
++          ${stat('Largest inversion',inversion,inversionNote)}
++          ${stat('Wind shear',`${f1(summary.maxSpeedShear)} mph · ${summary.maxDirectionShift.toFixed(0)}°`,'Largest speed / direction difference')}
++          ${stat('Hidden risks caught',String(summary.hiddenRisks),'5 ft said GO, CanopyGuard said STOP')}
++        </div>
++        <dl class="day-meta">
++          <dt>Records</dt><dd>${summary.count} observations · ${esc(timeOnly(summary.first,z))} – ${esc(timeOnly(summary.last,z))}</dd>
++          <dt>Conditions</dt><dd>${esc(summary.conditions.join(' · '))}</dd>
++          <dt>Orchard</dt><dd>${esc(summary.blocks.join(' · '))}</dd>
++          <dt>Pesticide</dt><dd>${esc(summary.profiles.join(' · '))}${summary.sessions.length?` · Treatment: ${esc(summary.sessions.join(', ').replaceAll('_',' ').toLowerCase())}`:''}</dd>
++          <dt>Source</dt><dd>${esc(summary.sources.join(' · '))} · Events: ${esc(summary.events.join(', '))}</dd>
++        </dl>`;
++    }
++    box.querySelectorAll('[data-day-step]').forEach(button=>button.addEventListener('click',()=>openDay(shiftDay(selectedDay,Number(button.dataset.dayStep)))));
++    box.querySelector('[data-open-day]')?.addEventListener('click',event=>openDay(event.currentTarget.dataset.openDay));
++    $('audit-records-title').textContent=summary?`Records for ${longDate(key)} (${summary.count})`:`Records for ${longDate(key)}`;
++    renderRows(rows??[]);
++  }
++  function renderRows(rows) {
+     table.replaceChildren();
++    if(!rows.length){
++      const tr=document.createElement('tr');
++      tr.innerHTML='<td colspan="8" class="audit-empty">No records for this date.</td>';
++      table.append(tr);
++    }
+     for(const row of rows.slice(0,250)){
+       const s=row.snapshot,e=s.evaluation,d=deltas(s);
+       const telemetry=r=>`${r.temp_f.toFixed(1)}°F · ${r.wind_speed_mph.toFixed(1)} mph ${r.wind_speed_mph===0?'calm':r.wind_dir_cardinal}`;
+@@ -31,7 +160,7 @@ export function mountAudit({zone=()=> 'America/Los_Angeles'}={}) {
+       <td><span class="result-badge ${hiddenRisk(s)?'STOP':e.single_station_5ft_status}">${hiddenRisk(s)?'HIDDEN RISK CAUGHT':e.single_station_5ft_status}</span></td>`;
+       table.append(tr);
+     }
+-    $('audit-limit').textContent=rows.length>250?'Showing the latest 250 rows. Exports include all matching records.':'';
++    $('audit-limit').textContent=rows.length>250?'Showing the first 250 records of this day. Exports include every record.':'';
+   }
+   function notify(record,{test=false,modal=false}={}) {
+     const alert=test?{title:'TEST DRIFT ALERT · '+record.snapshot.orchard_block,body:'Test message for the Applicator and PCA. Current evaluation: '+record.snapshot.evaluation.multi_height_status+'.'}:alertText(record),time=localDate(record.snapshot.timestamp,zone());
+@@ -58,7 +187,7 @@ export function mountAudit({zone=()=> 'America/Los_Angeles'}={}) {
+     previous=signature;
+     const now=Date.now();
+     if(!changed && event==='observation' && now-lastLoggedAt<15000 && !forceAlert)return;
+-    const row=log.append(snapshot,{source,session,event:changed&&event==='observation'?'transition':event});
++    const row=log.append(snapshot,{source,session,zone:zone(),event:changed&&event==='observation'?'transition':event});
+     lastLoggedAt=now;
+     if((changed||forceAlert)&&e.multi_height_status!=='GO') notify(row);
+     clearTimeout(queued);
+@@ -68,18 +197,32 @@ export function mountAudit({zone=()=> 'America/Los_Angeles'}={}) {
+   const heartbeat=setInterval(()=>{
+     if(current)accept(current.snapshot,{...current,event:'periodic tick'});
+   },15000);
+-  function download() {
+-    const data=auditCSV(filterRecords(log.list(),filter),zone());
++  // Which records an export or report covers: the opened day, the ticked days, the month on screen, or everything.
++  function scoped(scope=$('audit-export-scope').value) {
++    const records=filterRecords(log.list(),filter), days=groupByDay(records,zone());
++    const pick=keys=>[...keys].sort().flatMap(key=>days.get(key)??[]);
++    if(scope==='day') return {records:pick([selectedDay]),label:selectedDay,title:longDate(selectedDay)};
++    if(scope==='selected'){const keys=[...checkedDays].sort();return {records:pick(keys),label:`${keys.length}-days-${keys[0]??'none'}-to-${keys.at(-1)??'none'}`,title:keys.map(longDate).join('; ')};}
++    if(scope==='month') return {records:pick([...days.keys()].filter(key=>key.startsWith(viewMonth))),label:viewMonth,title:monthTitle(viewMonth)};
++    return {records:pick(days.keys()),label:'all',title:'All recorded history'};
++  }
++  function download(scope) {
++    const {records,label}=scoped(scope??($('audit-export-scope')?.value||'all'));
++    const data=auditCSV(records,zone());
+     const url=URL.createObjectURL(new Blob(['\uFEFF',data],{type:'text/csv;charset=utf-8'}));
+     const link=document.createElement('a');
+-    link.href=url;link.download='canopyguard-pca-audit.csv';link.click();
++    link.href=url;link.download=`canopyguard-pca-audit-${label}.csv`;link.click();
+     setTimeout(()=>URL.revokeObjectURL(url),1000);
++    $('audit-delivery').textContent=`Exported ${records.length} records (${label}).`;
+   }
+   function printReport() {
+-    const records=filterRecords(log.list(),filter).reverse();
++    const {records,title}=scoped();
+     const report=$('audit-print');
+-    report.innerHTML=`<h1>CanopyGuard Spray Compliance Report</h1><p>Generated ${esc(localDate(new Date().toISOString(),zone()))} · ${esc(zone())} · Filter: ${esc(filter)} · ${records.length} records</p><p>Decision-support record. Source labels distinguish simulation from connected observations. Verify pesticide labels and on-site conditions.</p>`;
++    report.innerHTML=`<h1>CanopyGuard Spray Compliance Report</h1><p>${esc(title)}</p><p>Generated ${esc(localDate(new Date().toISOString(),zone()))} · ${esc(zone())} · Filter: ${esc(filter)} · ${records.length} records</p><p>Decision-support record. Source labels distinguish simulation from connected observations. Verify pesticide labels and on-site conditions.</p>`;
++    let day;
+     for(const row of records){
++      const key=dayKey(row.snapshot.timestamp,row.zone??zone());
++      if(key!==day){day=key;const h=document.createElement('h2');h.className='report-day';h.textContent=longDate(key);report.append(h);}
+       const s=row.snapshot, e=s.evaluation,d=deltas(s),g=s.readings.ground_5ft,c=s.readings.canopy_30ft;
+       const section=document.createElement('section');
+       section.innerHTML=`<h2>${esc(s.orchard_block)} · ${e.multi_height_status}</h2><p>${esc(localDate(row.recorded_at,zone()))} · ${esc(row.source)} · ${esc(row.id)}</p><p>Observation ${esc(s.timestamp)} · ${esc(s.pesticide_profile.name)}${row.session?' · '+esc(row.session.state+' · '+row.session.pesticide_profile.name):''}</p><p>5 ft: ${g.temp_f.toFixed(1)}°F, ${g.wind_speed_mph.toFixed(1)} mph ${esc(g.wind_dir_cardinal)} · 30 ft: ${c.temp_f.toFixed(1)}°F, ${c.wind_speed_mph.toFixed(1)} mph ${esc(c.wind_dir_cardinal)}</p><p>Temperature difference ${signed(d.temperature)}°F · Speed shear ${Math.abs(d.speed).toFixed(1)} mph · Direction shift ${d.direction.toFixed(0)}° · Ground-only ${e.single_station_5ft_status}${hiddenRisk(s)?' · HIDDEN RISK CAUGHT':''}</p><p>${esc(reasons(s))}</p>`;
+@@ -88,18 +231,23 @@ export function mountAudit({zone=()=> 'America/Los_Angeles'}={}) {
+     window.print();
+   }
+   document.querySelectorAll('[data-audit-filter]').forEach(button=>button.addEventListener('click',()=>setFilter(button.dataset.auditFilter)));
+-  $('audit-download').addEventListener('click',download);
++  $('audit-download').addEventListener('click',()=>download());
++  $('cal-prev').addEventListener('click',()=>{viewMonth=shiftMonth(viewMonth,-1);render();});
++  $('cal-next').addEventListener('click',()=>{viewMonth=shiftMonth(viewMonth,1);render();});
++  $('cal-today').addEventListener('click',()=>openDay(today()));
++  $('cal-jump').addEventListener('change',event=>{if(/^\d{4}-\d{2}$/.test(event.target.value)){viewMonth=event.target.value;render();}});
++  $('cal-clear').addEventListener('click',()=>{checkedDays.clear();render();});
+   $('audit-report').addEventListener('click',printReport);
+   $('alert-close-drawer').addEventListener('click',()=>{drawer.hidden=true;});
+   $('alert-test').addEventListener('click',()=>{
+     if(current){
+-      const row=log.append(current.snapshot,{...current,event:'notification test'});
++      const row=log.append(current.snapshot,{...current,zone:zone(),event:'notification test'});
+       notify(row,{test:true,modal:true});render();
+     }
+   });
+   window.addEventListener('storage',event=>{if(event.key?.startsWith('canopyguard.audit.v1.'))render();});
+   render();
+-  return Object.freeze({accept,download,setFilter,list:log.list,suspend:()=>{current=null;previous=null;},setDispatcher:fn=>{
++  return Object.freeze({accept,download:(scope='all')=>download(scope),openDay,setFilter,list:log.list,suspend:()=>{current=null;previous=null;},setDispatcher:fn=>{
+     if(fn!==null&&typeof fn!=='function')throw new TypeError('Provide a dispatcher callback or null');
+     externalDispatch=fn;
+   },dispose:()=>clearInterval(heartbeat)});
+diff --git a/frontend/audit.js b/frontend/audit.js
+index 4c0710d..e4357b6 100644
+--- a/frontend/audit.js
++++ b/frontend/audit.js
+@@ -1,9 +1,26 @@
+ import { assertSnapshot, deltas } from './contract.js';
+ 
+ const PREFIX = 'canopyguard.audit.v1.';
++/** Calendar date (YYYY-MM-DD) of an instant in a time zone. */
++export function dayKey(timestamp, zone) {
++  return new Intl.DateTimeFormat('en-CA',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:zone}).format(new Date(timestamp));
++}
++/** The day a record belongs to: its observation date in the zone it was recorded in (older records: the fallback zone). */
++export const recordDay = (record, fallbackZone) => dayKey(record.snapshot.timestamp, record.zone ?? fallbackZone);
++/**
++ * Identity of an observation: same source, treatment state and snapshot (which carries its own timestamp)
++ * = same record. Used to keep the log free of duplicates, including records saved before this existed.
++ */
++export function recordFingerprint({source, session, snapshot}) {
++  const text = JSON.stringify([source ?? null, session?.state ?? null, session?.pesticide_profile?.name ?? null, snapshot]);
++  let a = 0x811c9dc5, b = 0x01000193;
++  for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); a = Math.imul(a ^ c, 0x01000193); b = Math.imul(b ^ c, 0x5bd1e995); }
++  return (a >>> 0).toString(16).padStart(8, '0') + (b >>> 0).toString(16).padStart(8, '0') + text.length.toString(16);
++}
+ export function createAuditLog(storage, {clock = () => new Date(), id = () => crypto.randomUUID()} = {}) {
+   const memory = new Map();
+   let persistent = Boolean(storage);
++  let index = null; // fingerprint -> record, rebuilt by list()
+   function list() {
+     const records = new Map(memory);
+     if (storage) {
+@@ -21,11 +38,20 @@ export function createAuditLog(storage, {clock = () => new Date(), id = () => cr
+         }
+       } catch { persistent = false; }
+     }
+-    return [...records.values()].sort((a,b)=>a.recorded_at.localeCompare(b.recorded_at)||a.id.localeCompare(b.id)).map(row=>structuredClone(row));
++    const sorted = [...records.values()].sort((a,b)=>a.recorded_at.localeCompare(b.recorded_at)||a.id.localeCompare(b.id));
++    index = new Map();
++    for (const row of sorted) { const key = row.fingerprint ?? recordFingerprint(row); if (!index.has(key)) index.set(key, row); }
++    return sorted.map(row=>structuredClone(row));
+   }
+-  function append(snapshot, {event='tick', source='unknown', session=null}={}) {
++  /** Appends a record, unless the same observation (same data and timestamp) is already stored: then returns that record with duplicate:true. */
++  function append(snapshot, {event='tick', source='unknown', session=null, zone}={}) {
+     assertSnapshot(snapshot);
+-    const record = { id:id(), recorded_at:clock().toISOString(), event, source, session:structuredClone(session), snapshot:structuredClone(snapshot) };
++    const fingerprint = recordFingerprint({source, session, snapshot});
++    if (!index) list();
++    const existing = index.get(fingerprint);
++    if (existing) return {...structuredClone(existing), duplicate:true};
++    const record = { id:id(), recorded_at:clock().toISOString(), event, source, session:structuredClone(session), snapshot:structuredClone(snapshot), fingerprint };
++    if (typeof zone === 'string' && zone) record.zone = zone;
+     const key = PREFIX + record.id;
+     if (memory.has(record.id)) throw new Error('Duplicate audit record ID');
+     if (storage) {
+@@ -37,6 +63,7 @@ export function createAuditLog(storage, {clock = () => new Date(), id = () => cr
+       } catch { persistent = false; }
+     }
+     memory.set(record.id,record);
++    index.set(fingerprint, record);
+     return structuredClone(record);
+   }
+   return Object.freeze({append,list,isPersistent:()=>persistent});
+@@ -65,13 +92,14 @@ const csvCell = value => {
+   return '"'+content.replaceAll('"','""')+'"';
+ };
+ export function auditCSV(records, zone) {
+-  const header=['Log ID','Recorded UTC','Recorded local','Time zone','Observation UTC','Observation local','Source','Event','Session state','Orchard block','Active pesticide','Recorded treatment','5 ft °F','5 ft mph','5 ft wind from','30 ft °F','30 ft mph','30 ft wind from','Canopy minus ground °F','Absolute speed shear mph','Direction shift degrees','Multi-height status','Trigger reasons','Single-station status','Hidden risk caught'];
+-  const rows=records.map(({id,recorded_at,event,source,session,snapshot:s})=>{
++  const header=['Log ID','Recorded UTC','Recorded local','Time zone','Observation UTC','Observation local','Source','Event','Session state','Orchard block','Active pesticide','Recorded treatment','5 ft °F','5 ft mph','5 ft wind from','30 ft °F','30 ft mph','30 ft wind from','Canopy minus ground °F','Absolute speed shear mph','Direction shift degrees','Multi-height status','Trigger reasons','Single-station status','Hidden risk caught','Observation date'];
++  const rows=records.map(record=>{
++    const {id,recorded_at,event,source,session,snapshot:s}=record;
+     const {ground_5ft:g,canopy_30ft:c}=s.readings,d=deltas(s),e=s.evaluation;
+     const applied=session?.pesticide_profile?.name;
+     return [id,recorded_at,localDate(recorded_at,zone),zone,s.timestamp,localDate(s.timestamp,zone),source,event,session?.state,
+       s.orchard_block,session?.state==='SPRAYING_IN_PROGRESS'?applied:s.pesticide_profile.name,applied,g.temp_f,g.wind_speed_mph,g.wind_dir_cardinal,c.temp_f,c.wind_speed_mph,c.wind_dir_cardinal,
+-      Number(d.temperature.toFixed(3)),Number(Math.abs(d.speed).toFixed(3)),Number(d.direction.toFixed(3)),e.multi_height_status,reasons(s),e.single_station_5ft_status,hiddenRisk(s)];
++      Number(d.temperature.toFixed(3)),Number(Math.abs(d.speed).toFixed(3)),Number(d.direction.toFixed(3)),e.multi_height_status,reasons(s),e.single_station_5ft_status,hiddenRisk(s),recordDay({snapshot:s,zone:record.zone},zone)];
+   });
+   return [header,...rows].map(row=>row.map(csvCell).join(',')).join('\r\n')+'\r\n';
+ }
+diff --git a/frontend/index.html b/frontend/index.html
+index bf550df..10994b2 100644
+--- a/frontend/index.html
++++ b/frontend/index.html
+@@ -43,10 +43,20 @@
+     <section class="forecast-panel" id="forecast" aria-labelledby="forecast-title"><div class="section-heading"><div><p class="eyebrow">PLAN THE NEXT PASS</p><h2 id="forecast-title">Your next 24 hours.</h2></div><span class="source-badge" id="forecast-source">SIMULATED FORECAST · NOT NWS</span></div><div id="next-window" class="next-window"></div><div class="timeline-scroll"><div class="timeline-inner"><div id="timeline" class="timeline" aria-label="Forecast intervals"></div><div id="timeline-labels" class="timeline-labels"></div></div></div><div class="forecast-bottom"><div class="legend"><span><i class="GO"></i>GO</span><span><i class="CAUTION"></i>CAUTION</span><span><i class="STOP"></i>STOP</span></div><span id="forecast-zone">Pacific time · Select a period for details</span></div><div id="forecast-detail" class="forecast-detail" aria-live="polite"></div></section>
+     <section class="monitor-panel"><span class="monitor-icon" aria-hidden="true">◷</span><div><h3 id="monitor-title">After the spray, keep watch.</h3><p id="monitor-risk"></p></div></section>
+     <section id="audit-panel" class="session-panel" aria-labelledby="audit-title">
+-      <h2 id="audit-title">Time-stamped audit log</h2><p id="audit-count" aria-live="polite"></p>
++      <div class="section-heading"><div><p class="eyebrow">DAILY WEATHER HISTORY</p><h2 id="audit-title">Time-stamped audit log</h2></div><p id="audit-count" aria-live="polite"></p></div>
+       <div class="session-actions"><button class="outline-button" data-audit-filter="all" aria-pressed="true">All Logs</button><button class="outline-button" data-audit-filter="stop" aria-pressed="false">STOP Alerts Only</button><button class="outline-button" data-audit-filter="inversion" aria-pressed="false">Inversions Caught</button><button class="outline-button" data-audit-filter="hidden" aria-pressed="false">Hidden Risks Caught</button></div>
+-      <div class="session-actions"><button id="audit-download" class="outline-button">Export PCA Audit Log (CSV)</button><button id="audit-report" class="outline-button">Generate Printable Spray Compliance Report</button><button id="alert-test" class="outline-button">Test SMS / Push Alert</button><button id="alert-close-drawer" class="outline-button">Dismiss alert toasts</button></div>
+-      <p id="audit-delivery" role="status"></p><div class="audit-table" tabindex="0" aria-label="Scrollable audit records"><table><thead><tr><th>Timestamp / Log ID</th><th>Orchard block &amp; pesticide</th><th>5 ft telemetry</th><th>30 ft telemetry</th><th>Temperature / speed / direction deltas</th><th>Decision</th><th>Trigger reasons</th><th>Single-station comparison</th></tr></thead><tbody id="audit-rows"></tbody></table></div>
++      <div class="session-actions"><label class="export-scope">Export<select id="audit-export-scope" aria-label="What to export"><option value="day">Selected day</option><option value="selected">Checked days</option><option value="month">This month</option><option value="all" selected>All history</option></select></label><button id="audit-download" class="outline-button">Export PCA Audit Log (CSV)</button><button id="audit-report" class="outline-button">Generate Printable Spray Compliance Report</button><button id="alert-test" class="outline-button">Test SMS / Push Alert</button><button id="alert-close-drawer" class="outline-button">Dismiss alert toasts</button></div>
++      <p id="audit-delivery" role="status"></p>
++      <div class="audit-calendar-layout">
++        <div class="audit-calendar">
++          <div class="calendar-nav"><button id="cal-prev" class="outline-button" aria-label="Previous month">‹</button><h3 id="cal-title" aria-live="polite"></h3><button id="cal-next" class="outline-button" aria-label="Next month">›</button><input type="month" id="cal-jump" aria-label="Go to month"><button id="cal-today" class="outline-button">Today</button></div>
++          <div id="cal-grid" class="calendar-grid" role="grid" aria-labelledby="cal-title"></div>
++          <div class="calendar-footer"><span class="calendar-legend"><i class="dot STOP"></i>STOP <i class="dot CAUTION"></i>CAUTION <i class="dot GO"></i>GO · worst decision that day · tick days to export them together</span><span><span id="cal-selected-count"></span> <button id="cal-clear" class="text-button">Clear</button></span></div>
++        </div>
++        <div id="audit-day" class="audit-day" aria-live="polite"></div>
++      </div>
++      <h3 id="audit-records-title" class="audit-records-title"></h3>
++      <div class="audit-table" tabindex="0" aria-label="Scrollable audit records"><table><thead><tr><th>Timestamp / Log ID</th><th>Orchard block &amp; pesticide</th><th>5 ft telemetry</th><th>30 ft telemetry</th><th>Temperature / speed / direction deltas</th><th>Decision</th><th>Trigger reasons</th><th>Single-station comparison</th></tr></thead><tbody id="audit-rows"></tbody></table></div>
+       <p id="audit-limit"></p>
+     </section>
+     <footer><div class="footer-mark">CanopyGuard <span>/</span> A clearer view before every pass.</div><p>Decision-support tool only. Does not replace pesticide label requirements, on-site checks, or local regulations.</p><span class="footer-demo" id="footer-demo">Hackathon demonstration · Not validated for application decisions</span></footer>
+@@ -60,6 +70,7 @@
+   </aside>
+   <div id="audit-print"></div>
+   <noscript><p class="error-message">JavaScript is required to evaluate and display data. Do not use this page for application decisions.</p></noscript>
++  <link rel="stylesheet" href="./audit-calendar.css">
+   <script type="module" src="./app.js"></script>
+ </body>
+ </html>
+diff --git a/tests/audit-calendar.test.mjs b/tests/audit-calendar.test.mjs
+new file mode 100644
+index 0000000..8e54baf
+--- /dev/null
++++ b/tests/audit-calendar.test.mjs
+@@ -0,0 +1,84 @@
++import {test} from 'node:test';
++import assert from 'node:assert/strict';
++import {createAuditLog,auditCSV,dayKey,recordDay} from '../frontend/audit.js';
++import {groupByDay,monthGrid,summarizeDay,shiftMonth,shiftDay} from '../frontend/audit-calendar.js';
++import {simulateWeather} from '../frontend/weather.js';
++
++const memoryStorage=()=>{const store=new Map();return {get length(){return store.size;},key:i=>[...store.keys()][i],getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,v),store};};
++const at=(snapshot,timestamp)=>({...structuredClone(snapshot),timestamp});
++
++test('records are filed under their observation date in the orchard time zone',()=>{
++  // 11:30 PM Nov 14 in Fresno is already Nov 15 in UTC: it must stay on Nov 14.
++  assert.equal(dayKey('2026-11-15T07:30:00Z','America/Los_Angeles'),'2026-11-14');
++  assert.equal(dayKey('2026-11-15T07:30:00Z','America/Phoenix'),'2026-11-15');
++  const log=createAuditLog(null,{id:(()=>{let n=0;return()=>String(++n);})()});
++  const trap=simulateWeather('trap');
++  log.append(at(trap,'2026-11-14T18:00:00Z'),{source:'demo',zone:'America/Los_Angeles'});
++  log.append(at(trap,'2026-11-15T07:30:00Z'),{source:'demo',zone:'America/Los_Angeles'});
++  log.append(at(trap,'2026-11-15T18:00:00Z'),{source:'demo',zone:'America/Los_Angeles'});
++  const days=groupByDay(log.list(),'UTC');
++  assert.deepEqual([...days.keys()].sort(),['2026-11-14','2026-11-15']);
++  assert.equal(days.get('2026-11-14').length,2);
++  assert.equal(days.get('2026-11-15').length,1);
++});
++
++test('same data and timestamp is stored once; a new timestamp is a new record',()=>{
++  const storage=memoryStorage();
++  let n=0;const log=createAuditLog(storage,{id:()=>String(++n)});
++  const trap=simulateWeather('trap');
++  const first=log.append(trap,{source:'demo'});
++  const again=log.append(structuredClone(trap),{source:'demo',event:'periodic tick'});
++  assert.equal(again.duplicate,true);assert.equal(again.id,first.id);
++  assert.equal(log.list().length,1);
++  log.append(at(trap,'2026-11-15T15:00:00Z'),{source:'demo'});
++  assert.equal(log.list().length,2);
++  // Reopening the site (new log over the same storage) still recognises it.
++  assert.equal(createAuditLog(storage,{id:()=> 'x'}).append(trap,{source:'demo'}).duplicate,true);
++});
++
++test('records saved before this update are preserved, filed by date, and shown once',()=>{
++  const storage=memoryStorage();
++  const trap=at(simulateWeather('trap'),'2026-11-15T23:00:00Z');
++  // Old-format rows: no fingerprint, no zone; two identical heartbeat copies.
++  for(const [id,recorded] of [['a','2026-11-15T21:56:06Z'],['b','2026-11-15T21:56:21Z']])
++    storage.setItem('canopyguard.audit.v1.'+id,JSON.stringify({id,recorded_at:recorded,event:'periodic tick',source:'demo',session:null,snapshot:trap}));
++  storage.setItem('canopyguard.audit.v1.c',JSON.stringify({id:'c',recorded_at:'2026-10-02T17:00:00Z',event:'observation',source:'live',session:null,snapshot:at(trap,'2026-10-02T16:45:00Z')}));
++  const rows=createAuditLog(storage).list();
++  assert.equal(rows.length,3,'nothing is dropped from storage');
++  const days=groupByDay(rows,'America/Los_Angeles');
++  assert.deepEqual([...days.keys()].sort(),['2026-10-02','2026-11-15']);
++  assert.equal(days.get('2026-11-15').length,1,'identical copies are shown once');
++  assert.equal(recordDay(rows.find(r=>r.id==='c'),'America/Los_Angeles'),'2026-10-02');
++});
++
++test('day summary uses only that day\'s records, and a day with nothing has no summary',()=>{
++  const log=createAuditLog(null,{id:(()=>{let n=0;return()=>String(++n);})()});
++  for(const [minute,time] of [[0,'2026-11-15T16:00:00Z'],[120,'2026-11-15T18:00:00Z'],[360,'2026-11-15T22:00:00Z']])
++    log.append(at(simulateWeather('clear',minute),time),{source:'demo',zone:'America/Los_Angeles'});
++  const rows=groupByDay(log.list(),'America/Los_Angeles').get('2026-11-15');
++  const s=summarizeDay(rows);
++  const temps=rows.map(r=>r.snapshot.readings.ground_5ft.temp_f);
++  assert.equal(s.count,3);
++  assert.equal(s.ground.temp.high,Math.max(...temps));assert.equal(s.ground.temp.low,Math.min(...temps));
++  assert.equal(s.status.GO+s.status.CAUTION+s.status.STOP,3);
++  assert.equal(summarizeDay([]),null);assert.equal(summarizeDay(undefined),null);
++});
++
++test('month grid is whole weeks, Sunday first, covering the month',()=>{
++  const weeks=monthGrid('2026-11');
++  assert.equal(weeks[0][0].key,'2026-11-01'); // Nov 1 2026 is a Sunday
++  assert.ok(weeks.every(w=>w.length===7));
++  const inMonth=weeks.flat().filter(c=>c.inMonth);
++  assert.equal(inMonth.length,30);assert.equal(inMonth.at(-1).key,'2026-11-30');
++  assert.equal(monthGrid('2027-02')[0][1].key,'2027-02-01');
++  assert.equal(shiftMonth('2026-01',-1),'2025-12');assert.equal(shiftMonth('2026-12',1),'2027-01');
++  assert.equal(shiftDay('2026-03-01',-1),'2026-02-28');
++});
++
++test('CSV export keeps its columns and adds each record\'s date',()=>{
++  const row=createAuditLog(null,{id:()=> 'r1'}).append(at(simulateWeather('trap'),'2026-11-15T14:45:00Z'),{source:'demo',zone:'America/Los_Angeles'});
++  const [header,line]=auditCSV([row],'America/Los_Angeles').trim().split('\r\n');
++  assert.ok(header.startsWith('"Log ID","Recorded UTC"'));
++  assert.ok(header.endsWith('"Hidden risk caught","Observation date"'));
++  assert.ok(line.endsWith('"2026-11-15"'));
++});
+diff --git a/tests/audit.test.mjs b/tests/audit.test.mjs
+index 98c20e8..c5ede10 100644
+--- a/tests/audit.test.mjs
++++ b/tests/audit.test.mjs
+@@ -31,7 +31,7 @@ test('CSV carries evidence and escapes spreadsheet formulas and quotes',()=>{
+   assert.ok(csv.includes('"\'=Example(""x"")"'));
+   assert.match(csv,/INVERSION_DETECTED/);
+   assert.match(csv,/America\/Phoenix/);
+-  assert.match(csv,/"true"\r\n$/);
++  assert.match(csv,/"true","\d{4}-\d{2}-\d{2}"\r\n$/);
+ });
+ test('post-spray alert uses treatment rule and observation telemetry',()=>{
+   const row={snapshot:simulateWeather('afternoon',135)};
+-- 
+2.43.0
+
