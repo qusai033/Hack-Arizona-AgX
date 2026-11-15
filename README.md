@@ -57,3 +57,9 @@ The normal application entry point now starts in **forecast screening mode**, se
 Use `http://localhost:5173/?mode=demo` for the explicitly simulated hackathon walkthrough, controls, and scenario sliders. This deliberate URL mode is distinct from normal production startup; using `window.CanopyGuard.useDemo('trap')` explicitly also switches to demonstration mode. Integrators can still call `window.CanopyGuard.connect(...)` to provide measured live observations, which are labeled as connected sensor data.
 
 The default location selection, startup request, 30-second refresh, stale-response rejection, and source display belong to `frontend/app.js`. Forecast location metadata and city-scoped persistence live in `frontend/weather.js`. These modifications do not validate the forecasting model or pesticide label compliance.
+
+## Audit evidence schema (v2)
+
+New audit records preserve the complete source snapshot, event ID, full treatment session and known evaluation context. Built-in demo/forecast records include the actual engine version, effective thresholds, diagnostics, and explicit recording versus observation/forecast-valid times; external/imported evaluations are labeled unverified rather than falsely attributed to the built-in engine. Existing v1 records stay readable with `evidence: null`, without invented historical metadata.
+
+See [docs/AUDIT_EVIDENCE.md](docs/AUDIT_EVIDENCE.md) for the field contract, replay tests, source provenance, and current **CSV/export limitations** (full evidence export remains Issue #17).

@@ -85,3 +85,50 @@ export interface DashboardAdapter {
   /** Must evaluate forecasts for this profile. NWS alone is not a multi-height measurement. */
   loadForecast?(profile: PesticideProfile): Promise<CanopySnapshot[]>;
 }
+
+/** Audit v2: evidence is stored in addition to the immutable snapshot/result.
+ * Older v1 records load with evidence=null, never invented diagnostics.
+ */
+export interface AuditEvidenceV2 {
+  schema_version: 2;
+  evaluator_kind: 'canopyguard_builtin' | 'external_or_unverified';
+  engine_version: string | null;
+  /** Frozen policy applied to the exact evaluated record; null for external engines. */
+  effective_thresholds: Record<string, number> | null;
+  effective_profile: PesticideProfile;
+  evaluation_context: EvaluationContext;
+  diagnostics: Record<string, unknown> | null;
+  reproduced_with_current_engine: boolean;
+  provenance: Record<string, unknown> | null;
+  times: {
+    recorded_at: string | null;
+    snapshot_at: string;
+    snapshot_time_role: string;
+    simulation_clock_at: string | null;
+    forecast_valid_at: string | null;
+    observation_at: string | null;
+    evaluated_at: string | null;
+  };
+}
+export interface AuditRecordV2 {
+  schema_version: 2;
+  id: string;
+  event_id: string;
+  sequence_number: number;
+  recorded_at: string;
+  event: string;
+  source: string;
+  session: SpraySession | null;
+  snapshot: CanopySnapshot;
+  evidence: AuditEvidenceV2;
+}
+export interface HistoricalAuditRecordV1 {
+  schema_version: 1;
+  id: string;
+  recorded_at: string;
+  source: string;
+  snapshot: CanopySnapshot;
+  /** Older sessions can be incomplete; do not manufacture missing times. */
+  session?: Partial<SpraySession> | null;
+  evidence: null;
+}

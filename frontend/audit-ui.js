@@ -51,12 +51,14 @@ export function mountAudit({zone=()=> 'America/Los_Angeles', onRecordSnapshot}={
       Promise.resolve().then(()=>externalDispatch({ ...alert, message, log_id:record.id, recipients:['Applicator','PCA'] })).catch(()=>$('audit-delivery').textContent='External alert delivery failed. The audit record was saved.');
     }
   }
-  function accept(snapshot, {source, session=null, action, forceAlert=false}={}) {
+  function accept(snapshot, {source, session=null, action, forceAlert=false,
+    evaluationContext={}, provenance=null}={}) {
     assertEvent(action);
     const existing = log.get(action.event_id);
     if (existing) return existing;
-    const row=log.append(snapshot,{source,session,action});
-    current={snapshot:structuredClone(snapshot),source,session:structuredClone(session)};
+    const row=log.append(snapshot,{source,session,action,evaluationContext,provenance});
+    current={snapshot:structuredClone(snapshot),source,session:structuredClone(session),
+      evaluationContext:structuredClone(evaluationContext),provenance:structuredClone(provenance)};
     $('audit-record').disabled=false;
     $('alert-test').disabled=false;
     const e=snapshot.evaluation,post=e.triggered_rules.some(rule=>rule.code==='POST_SPRAY_VOLATILITY_ALERT');
