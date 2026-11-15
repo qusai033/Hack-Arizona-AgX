@@ -100,6 +100,7 @@ function controls() {
     adapter?.evaluateProfile ? 'Profile changes are evaluated by the connected risk engine.' :
     mode==='imported' ? 'Imported snapshots are read-only. Use the interactive demo to explore profile settings.' :
     'Profile changes require a connected evaluator; this sensor snapshot is read-only.';
+  $('profile-hint').textContent += ' Illustrative thresholds only; they are not validated product-label limits or application clearance.';
   $('session-start').disabled=mode!=='demo'||replayTreatment()||invalid||busy||session?.state==='SPRAYING_IN_PROGRESS'||session?.state==='POST_SPRAY_CURING'||snapshot?.evaluation.multi_height_status!=='GO';
   $('session-finish').disabled=mode!=='demo'||replayTreatment()||invalid||session?.state!=='SPRAYING_IN_PROGRESS';
   $('session-example').disabled=mode!=='demo'||replayTreatment()||invalid||session?.state==='SPRAYING_IN_PROGRESS';
