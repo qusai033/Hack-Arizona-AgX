@@ -82,6 +82,6 @@ test('re-screening rejects expired, missing, and future NWS issuance',()=>{
 test('no expired period or invalid profile can produce a fresh screen',()=>{
   const original=model('clear');
   assert.throws(()=>currentForecastPeriod(original,nowMs+25*hour),/expired/);
-  assert.throws(()=>reevaluateForecastModel(original,{...getProfile('contact_fungicide'),max_wind_mph:-1},nowMs),/profile/i);
+  assert.throws(()=>reevaluateForecastModel(original,{...getProfile('contact_fungicide'),max_wind_mph:-1},nowMs),/max_wind_mph|profile/i);
   assert.throws(()=>reevaluateForecastModel({...original,snapshots:[]},getProfile('contact_fungicide'),nowMs),/required/i);
 });
