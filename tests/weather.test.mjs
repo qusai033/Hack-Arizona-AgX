@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { simulateWeather, loadOrchardForecast, normalizeHourly } from '../frontend/weather.js';
+import { simulateWeather, loadOrchardForecast, normalizeHourly, locations } from '../frontend/weather.js';
 import { getProfile } from '../frontend/engine/index.js';
 import { assertSnapshot } from '../frontend/contract.js';
 
@@ -36,7 +36,58 @@ test('NWS data uses hourly input, caches successful fetch, and falls back determ
   const cached=await loadOrchardForecast('fresno',profile,{nowMs,cache,fetchImpl:offline});
   assert.equal(cached.source,'cached_nws');
   assert.deepEqual(cached.snapshots.map(row=>row.readings),live.snapshots.map(row=>row.readings));
-  const a=await loadOrchardForecast('willcox',profile,{nowMs,fetchImpl:offline});
-  assert.equal(a.source,'synthetic');assert.equal(a.time_zone,'America/Phoenix');
-  assert.deepEqual(a,await loadOrchardForecast('willcox',profile,{nowMs,fetchImpl:offline}));
+  const a=await loadOrchardForecast('yuba_city',profile,{nowMs,fetchImpl:offline});
+  assert.equal(a.source,'synthetic');assert.equal(a.time_zone,'America/Los_Angeles');
+  assert.equal(a.location_id,'yuba_city');
+  assert.deepEqual(a,await loadOrchardForecast('yuba_city',profile,{nowMs,fetchImpl:offline}));
+});
+
+test('required California forecast cities are stable and have valid location metadata',()=>{
+  const expected={fresno:'Fresno, CA',modesto:'Modesto, CA',merced:'Merced, CA',
+    bakersfield:'Bakersfield, CA',chico:'Chico, CA',yuba_city:'Yuba City, CA'};
+  assert.deepEqual(Object.keys(locations),Object.keys(expected));
+  for(const [id,label] of Object.entries(expected)){
+    const place=locations[id];
+    assert.equal(place.label,label);
+    assert.equal(place.zone,'America/Los_Angeles');
+    assert.ok(place.latitude>32 && place.latitude<43);
+    assert.ok(place.longitude< -114 && place.longitude> -125);
+    assert.ok(place.block.includes(label));
+  }
+});
+test('city selections use different NWS point coordinates and isolated cache keys',async()=>{
+  const nowMs=Date.parse('2026-11-15T18:00:00Z');
+  const rows=Array.from({length:24},(_,i)=>({
+    startTime:new Date(nowMs+i*3600000).toISOString(),
+    endTime:new Date(nowMs+(i+1)*3600000).toISOString(),
+    windSpeed:'5 mph',windDirection:'NW',temperature:68,temperatureUnit:'F',
+    relativeHumidity:{value:55},shortForecast:'Sunny'
+  }));
+  const seen=[],store=new Map();
+  const cache={getItem:key=>store.get(key),setItem:(key,val)=>store.set(key,val)};
+  const fetchImpl=async url=>{
+    seen.push(url);
+    return {ok:true,json:async()=>url.includes('/points/')?
+      {properties:{forecastHourly:'https://api.weather.gov/gridpoints/HNX/53,50/forecast/hourly'}}:
+      {properties:{periods:rows}}};
+  };
+  const profile=getProfile('contact_fungicide');
+  for(const id of Object.keys(locations)){
+    const result=await loadOrchardForecast(id,profile,{nowMs,cache,fetchImpl});
+    assert.equal(result.source,'nws');
+    assert.equal(result.location_id,id);
+    assert.equal(result.location_label,locations[id].label);
+    assert.equal(result.time_zone,locations[id].zone);
+    assert.ok(result.snapshots.every(s=>s.orchard_block===locations[id].block));
+    assert.ok(store.has('canopyguard-nws-v1-'+id));
+    assert.ok(seen.includes('https://api.weather.gov/points/'+locations[id].latitude+','+locations[id].longitude));
+  }
+  assert.equal([...store.keys()].length,6);
+  const fail=async()=>{throw new Error('offline');};
+  const merced=await loadOrchardForecast('merced',profile,{nowMs,cache,fetchImpl:fail});
+  assert.equal(merced.source,'cached_nws');
+  assert.ok(merced.snapshots.every(s=>s.orchard_block===locations.merced.block));
+  const emptyCache={getItem:()=>null,setItem:()=>{}};
+  const chico=await loadOrchardForecast('chico',profile,{nowMs,cache:emptyCache,fetchImpl:fail});
+  assert.equal(chico.source,'synthetic'); // Never display as production observations.
 });
