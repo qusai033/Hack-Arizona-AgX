@@ -177,3 +177,11 @@ body{padding-bottom:130px}
   .source-info .mode-link{font-size:11px;padding:8px 9px}
   #session-production-notice{padding:12px;font-size:12px}
 }
+
+/* Issue #42: make prototype limitations and single-height blind spots explicit. */
+.prototype-disclaimer{margin:0 0 22px;padding:16px 19px;border:1px solid #c9a45b;border-left:5px solid #a87819;border-radius:9px;background:#fff7e5;color:#46350f;font-size:13px;line-height:1.65}
+.prototype-disclaimer strong{display:block;font-size:14px;margin-bottom:4px}
+.prototype-disclaimer p{margin:4px 0}
+.ground-limitations{margin-top:13px;padding:12px 14px;border:1px solid #e1c98e;border-radius:8px;background:#fff8e8;color:#564315;font-size:11px;line-height:1.55}
+.ground-limitations strong{font-size:12px}
+.ground-limitations ul{margin:6px 0 0;padding-left:19px}
