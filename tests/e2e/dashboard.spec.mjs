@@ -92,7 +92,7 @@ test('runs the existing adapter regression page against the built dashboard', as
   expect(errors).toEqual([]);
 });
 
-test('built demo preserves unique actions, idempotent events, v2 evidence, CSV contents and reloads', async ({ page, testInfo }) => {
+test('built demo preserves unique actions, idempotent events, v2 evidence, CSV contents and reloads', async ({ page }, testInfo) => {
   const blocked = await isolateNetwork(page);
   const errors = captureErrors(page);
   await page.goto('/?mode=demo');
@@ -117,6 +117,7 @@ test('built demo preserves unique actions, idempotent events, v2 evidence, CSV c
       id: () => 'e2e-one-tick-only',
       now: () => '2026-11-15T06:45:00.000Z'
     });
+    const beforeTimestamp = window.CanopyGuardAudit.list().at(-1).snapshot.timestamp;
     const first = window.CanopyGuard.dispatchDemoEvent(action);
     const second = window.CanopyGuard.dispatchDemoEvent(action);
     const rows = window.CanopyGuardAudit.list();
@@ -124,10 +125,10 @@ test('built demo preserves unique actions, idempotent events, v2 evidence, CSV c
       first,
       second,
       before,
-      beforeTimestamp: window.CanopyGuardAudit.list().at(-1).snapshot.timestamp,
+      beforeTimestamp,
       after: rows.length,
       eventRows: rows.filter(row => row.id === action.event_id).length,
-      lastTimestamp: rows.at(-1).snapshot.timestamp
+      lastTimestamp: rows.find(row => row.id === action.event_id)?.snapshot.timestamp
     };
   });
   expect(duplicateResult.first).toBe(true);
@@ -209,7 +210,10 @@ test('audit storage failures stay recoverable and use visible temporary-storage 
   const blocked = await isolateNetwork(page);
   const errors = captureErrors(page);
   await page.goto('/?mode=demo');
-  await expect(page.locator('#audit-count')).toContainText('Temporary storage');
+  await expect(page.locator('#audit-count')).toContainText('Storage needs attention');
+  await expect(page.locator('#audit-persistence')).toBeVisible();
+  await expect(page.locator('#audit-persistence')).toContainText('Browser storage is full; new activity is kept in this tab.');
+  await expect(page.locator('#audit-persistence')).toContainText('export CSV before closing');
   const before = await page.evaluate(() => window.CanopyGuardAudit.list().length);
   await page.getByRole('button', { name: 'Record Snapshot', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.CanopyGuardAudit.list().length)).toBe(before + 1);
@@ -263,7 +267,7 @@ test('dismissed alerts recur on a new risky transition and both demo reset contr
   expect(errors).toEqual([]);
 });
 
-test('four-step judge walkthrough keeps its anchored forecast and filtered audit download', async ({ page, testInfo }) => {
+test('four-step judge walkthrough keeps its anchored forecast and filtered audit download', async ({ page }, testInfo) => {
   const blocked = await isolateNetwork(page);
   const errors = captureErrors(page);
   await page.goto('/?mode=demo');
@@ -333,7 +337,8 @@ test('production startup fails closed for stale NWS issuance and for unavailable
   await page.reload();
   await expect(page.locator('#decision-title')).toContainText('DATA UNAVAILABLE', { timeout: 20000 });
   expect(blocked).toEqual([]);
-  expect(errors).toEqual([]);
+  // The mocked 503 is the intentional network failure under test, not a page error.
+  expect(errors.filter(error => !error.includes('status of 503 (Service Unavailable)'))).toEqual([]);
 });
 
 test('late response for the previous forecast city cannot replace the newly selected city', async ({ page }) => {
