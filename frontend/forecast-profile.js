@@ -1,6 +1,6 @@
 import { assertProfile, assertSnapshot } from './contract.js';
 import { evaluateDemo } from './demo.js';
-import { forecastWindow } from './weather.js';
+import { forecastWindow, validateForecastIssuance } from './weather.js';
 
 /**
  * Re-screen already sourced NWS hourly weather using the exact selected profile.
@@ -13,6 +13,14 @@ export function reevaluateForecastModel(model, profile, nowMs=Date.now()) {
      model.interval_minutes!==60 || typeof model.time_zone!=='string' ||
      !Number.isFinite(nowMs)) {
     throw new TypeError('A valid NWS hourly forecast is required for profile screening.');
+  }
+  // A profile switch is not a source refresh. Do not revive an expired NWS
+  // issue by re-evaluating its already modeled height measurements.
+  if(model.source==='nws'||model.source==='cached_nws') {
+    if(!['updateTime','generatedAt','updated'].includes(model.issuance_source)) {
+      throw new Error('NWS issuance provenance is missing.');
+    }
+    validateForecastIssuance({[model.issuance_source]:model.issued_at},nowMs);
   }
   const snapshots=model.snapshots.map(previous=>{
     const next=evaluateDemo(previous,profile);
@@ -32,6 +40,7 @@ export function currentForecastPeriod(model,nowMs=Date.now()){
      !Number.isFinite(model.interval_minutes) || model.interval_minutes<=0){
     throw new TypeError('A non-empty forecast with an interval and clock is required.');
   }
-  return model.snapshots.find(row=>Date.parse(row.timestamp)+model.interval_minutes*60000>nowMs) ||
-    model.snapshots[0];
+  const current=model.snapshots.find(row=>Date.parse(row.timestamp)+model.interval_minutes*60000>nowMs);
+  if(!current)throw new Error('Forecast period coverage has expired; refresh weather data.');
+  return current;
 }
