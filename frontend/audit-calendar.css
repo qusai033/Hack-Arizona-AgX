@@ -1,0 +1,71 @@
+/* Daily weather history: calendar + day record inside the audit panel. Uses the site's tokens from styles.css. */
+#audit-panel .section-heading{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+#audit-panel #audit-count{margin:0;color:var(--muted);font-size:14px}
+.export-scope{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600}
+.export-scope select{min-height:40px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 8px;font:inherit;font-weight:500}
+
+.audit-calendar-layout{display:grid;grid-template-columns:minmax(420px,1.05fr) 1fr;gap:22px;margin-top:16px;align-items:start}
+.audit-calendar,.audit-day{border:1px solid var(--line);border-radius:var(--radius);background:#fff;padding:16px;min-width:0}
+
+.calendar-nav{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.calendar-nav h3{flex:1;margin:0;font-size:1.15rem;text-align:center}
+.calendar-nav .outline-button{min-height:38px;padding:0 12px}
+.calendar-nav input[type=month]{min-height:38px;border:1px solid var(--line);border-radius:8px;padding:0 8px;font:inherit;color:var(--ink);background:#fff}
+
+.calendar-grid{display:grid;gap:4px}
+.cal-row{display:grid;grid-template-columns:44px repeat(7,minmax(0,1fr));gap:4px}
+.cal-head span{font-size:12px;font-weight:700;color:var(--muted);text-align:center;padding:4px 0;letter-spacing:.04em}
+.cal-week-label{min-height:0;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;padding:0}
+.cal-week-label:not(:disabled):hover{border-color:var(--line);background:var(--green-soft);color:var(--ink)}
+.cal-week-label:disabled{opacity:.35;cursor:default}
+
+.cal-day{position:relative;min-height:62px;border:1px solid var(--line);border-radius:9px;background:#fff}
+.cal-day.other-month{background:var(--paper);opacity:.6}
+.cal-day.has-data{background:#fbfdf9}
+.cal-day.today{border:2px solid var(--green)}
+.cal-day.today .cal-num{background:var(--green);color:#fff}
+.cal-day.selected{box-shadow:0 0 0 3px #b9d8c2;border-color:var(--green)}
+.cal-open{all:unset;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;width:100%;height:100%;min-height:60px;padding:6px 7px;cursor:pointer;border-radius:8px}
+.cal-open:focus-visible{outline:3px solid #458565;outline-offset:1px}
+.cal-num{align-self:flex-start;min-width:24px;height:24px;border-radius:12px;display:grid;place-items:center;font-size:13px;font-weight:700;color:var(--ink)}
+.cal-day.future .cal-num{color:var(--muted);font-weight:500}
+.cal-mark{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--muted)}
+.cal-check{position:absolute;top:6px;right:6px;width:16px;height:16px;margin:0;accent-color:var(--green);cursor:pointer}
+
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:-1px}
+.dot.STOP{background:var(--red)}.dot.CAUTION{background:#d9a21b}.dot.GO{background:var(--green)}
+.calendar-footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--muted)}
+.calendar-legend .dot{margin-left:6px}
+#cal-clear{font-size:12px;min-height:0}
+
+.day-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.day-head h3{margin:2px 0 0;font-size:1.25rem}
+.day-nav{display:flex;gap:6px}
+.day-nav .outline-button{min-height:36px;padding:0 10px;font-size:13px}
+.day-decision{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0 12px;font-size:13px;color:var(--muted)}
+.day-decision .result-badge{padding:8px 12px}
+.day-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.day-stat{border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:var(--paper)}
+.day-stat span{display:block;font-size:12px;color:var(--muted)}
+.day-stat strong{display:block;font-size:17px;margin-top:2px}
+.day-stat small{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+.day-meta{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:14px 0 0;font-size:13px}
+.day-meta dt{color:var(--muted);font-weight:600}
+.day-meta dd{margin:0;overflow-wrap:anywhere}
+.day-empty{margin-top:14px;padding:18px;border:1px dashed var(--line);border-radius:10px;background:var(--paper)}
+.day-empty p{margin:6px 0 12px;color:var(--muted);font-size:14px}
+
+.audit-records-title{margin:22px 0 0;font-size:1rem}
+.audit-empty{color:var(--muted);text-align:center;padding:22px!important}
+#audit-print .report-day{margin-top:14pt;border-bottom:2px solid #333}
+/* Narrow screens (the site's QA checks 390 px and 768 px): stack the calendar above the day record. */
+@media (max-width:980px){.audit-calendar-layout{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:560px){
+  .audit-calendar,.audit-day{padding:10px}
+  .cal-row{grid-template-columns:28px repeat(7,minmax(0,1fr));gap:3px}
+  .cal-week-label{font-size:0}.cal-week-label::after{content:'✓';font-size:11px}
+  .cal-day,.cal-open{min-height:46px}.cal-open{padding:4px}
+  .cal-check{top:3px;right:3px;width:13px;height:13px}
+  .calendar-nav{flex-wrap:wrap}.calendar-nav input[type=month]{flex:1;min-width:0}
+  .day-stats{grid-template-columns:minmax(0,1fr)}
+}

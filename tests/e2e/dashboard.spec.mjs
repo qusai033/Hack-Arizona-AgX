@@ -576,3 +576,56 @@ test('visible links switch between production and interactive demo, revealing se
   expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+test('audit calendar files records by day, follows the latest record, and scopes the CSV export', async ({ page }, testInfo) => {
+  const blocked = await isolateNetwork(page);
+  const errors = captureErrors(page);
+  await page.goto('/?mode=demo');
+  await expect(page.locator('#decision-title')).toContainText('DO NOT SPRAY');
+  await page.getByRole('button', { name: 'Record Snapshot', exact: true }).click();
+
+  const expected = await page.evaluate(async () => {
+    const { recordDay, groupByDay } = await import('/audit-calendar.js');
+    const rows = window.CanopyGuardAudit.list();
+    const day = recordDay(rows.at(-1), 'America/Los_Angeles');
+    return { day, count: groupByDay(rows, 'America/Los_Angeles').get(day).length };
+  });
+  // Without a manual choice the calendar opens on the day of the most recent record (the demo clock's day).
+  const selected = page.locator('#cal-grid .cal-day.selected');
+  await expect(selected).toHaveCount(1);
+  await expect(selected).toHaveAttribute('data-day', expected.day);
+  await expect(selected.locator('.cal-mark')).toHaveText(String(expected.count));
+  await expect(page.locator('#audit-day')).toContainText('Worst decision: STOP');
+  await expect(page.locator('#audit-day')).toContainText('Precipitation');
+  await expect(page.locator('#audit-rows tr')).toHaveCount(expected.count);
+  await expect(page.locator('#audit-count')).toContainText('1 day with data');
+
+  // A day without records says so and is never filled in.
+  await page.getByRole('button', { name: 'Next day', exact: true }).click();
+  await expect(page.locator('#audit-day')).toContainText('No records for this date.');
+  await expect(page.locator('#audit-rows .audit-empty')).toHaveCount(1);
+  await page.getByRole('button', { name: /Go to latest recorded day/ }).click();
+  await expect(page.locator('#cal-grid .cal-day.selected')).toHaveAttribute('data-day', expected.day);
+
+  // Ticking a day enables the checked-days scope.
+  await expect(page.locator('#audit-export-scope option[value="selected"]')).toBeDisabled();
+  await page.locator('#cal-grid .cal-day.selected .cal-check').check();
+  await expect(page.locator('#audit-export-scope option[value="selected"]')).toBeEnabled();
+  await expect(page.locator('#cal-selected-count')).toHaveText('1 day ticked');
+
+  await page.locator('#audit-export-scope').selectOption('day');
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export PCA Audit Log (CSV)', exact: true }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(`canopyguard-pca-audit-${expected.day}.csv`);
+  const csv = parseCsv(await saveDownload(download, testInfo, 'audit-day.csv'));
+  const dateColumn = csv[0].indexOf('Observation date');
+  expect(dateColumn).toBe(csv[0].length - 1);
+  expect(csv.length - 1).toBe(expected.count);
+  for (const row of csv.slice(1)) expect(row[dateColumn]).toBe(expected.day);
+
+  await page.setViewportSize({ width: 390, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});
