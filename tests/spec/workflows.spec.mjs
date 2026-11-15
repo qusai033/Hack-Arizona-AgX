@@ -24,8 +24,12 @@ for (const fixture of CASES) {
 
 test('[SPEC-OFFLINE] built demo reloads without external requests and each shipped scenario advances eight frames (§3.1.5)', async ({ page }, testInfo) => {
   await openDemo(page);
+  const preservedIds = await page.evaluate(() => window.CanopyGuardAudit.list().map(row => row.id));
   await page.reload();
   await expect(page.locator('#source-badge')).toContainText('SIMULATED DATA');
+  const runId = await page.evaluate(priorIds => window.CanopyGuardAudit.list()
+    .find(row => !priorIds.includes(row.id))?.demo_run_id, preservedIds);
+  expect(runId).toBeTruthy();
   const ids = await page.locator('[data-scenario]').evaluateAll(nodes => nodes.map(node => node.dataset.scenario));
   expect(ids).toHaveLength(5);
   const results = [];
@@ -40,7 +44,10 @@ test('[SPEC-OFFLINE] built demo reloads without external requests and each shipp
   await evidence(testInfo, 'shipped-offline-scenarios-not-canonical-catalog', results);
   await page.locator('#demo-reset').click();
   await expect(page.locator('#weather-clock')).toContainText('6:45 AM');
-  expect(await page.evaluate(() => window.CanopyGuardAudit.list().map(row => row.event))).toEqual(['DEMO_INIT']);
+  const resetRows = await page.evaluate(() => window.CanopyGuardAudit.list());
+  // The merged scoped-reset policy preserves the earlier run from before reload.
+  expect(resetRows.filter(row => row.demo_run_id === runId).map(row => row.event)).toEqual(['DEMO_INIT']);
+  expect(resetRows.map(row => row.id)).toEqual(expect.arrayContaining(preservedIds));
 });
 
 test('[SPEC-COPY] GO headline uses the configured-checks wording (§1.2, Team 3)', async ({ page }, testInfo) => {
