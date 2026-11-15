@@ -13,8 +13,9 @@ const input = {
   pesticide_profile: getProfile('contact_fungicide')
 };
 export const example = evaluateSnapshot(input);
-export function evaluateDemo(snapshot,profile=snapshot.pesticide_profile,session) {
-  return evaluateSnapshot({...structuredClone(snapshot),pesticide_profile:{...profile}},session?{session}:{});
+export function evaluateDemo(snapshot,profile=snapshot.pesticide_profile,session,evaluationTimeMs) {
+  const context={...(session?{session}:{}),...(evaluationTimeMs===undefined?{}:{evaluationTimeMs})};
+  return evaluateSnapshot({...structuredClone(snapshot),pesticide_profile:{...profile}},context);
 }
 export function scenario(name,profile) {
   if(!['trap','marginal','clear'].includes(name))throw new Error('Unknown demo scenario');
