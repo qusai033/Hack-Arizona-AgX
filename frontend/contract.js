@@ -47,19 +47,66 @@ export function assertProfile(p) {
   number(p.post_spray_monitor_hours, 'post_spray_monitor_hours', 0, 168);
   return p;
 }
+const qualityIssues=(value,path)=>{
+  if(!Array.isArray(value)||value.length>16)fail(path,'expected an array of up to 16 issues');
+  value.forEach((item,i)=>text(item,`${path}[${i}]`));
+};
+function assertDataQuality(q){
+  object(q,'data_quality',['overall_status','assessment','age_ms','evaluated_at','issues','ground_5ft','canopy_30ft']);
+  enumeration(q.overall_status,'data_quality.overall_status',['VALID','INVALID_OR_STALE']);
+  enumeration(q.assessment,'data_quality.assessment',['STRUCTURE_ONLY','STRUCTURE_AND_AGE']);
+  if(q.age_ms!==null&&!Number.isFinite(q.age_ms))fail('data_quality.age_ms','expected finite milliseconds or null');
+  if(q.evaluated_at!==null&&(typeof q.evaluated_at!=='string'||!Number.isFinite(Date.parse(q.evaluated_at))))
+    fail('data_quality.evaluated_at','expected ISO timestamp or null');
+  qualityIssues(q.issues,'data_quality.issues');
+  for(const height of ['ground_5ft','canopy_30ft']){
+    const p=`data_quality.${height}`,layer=q[height];
+    object(layer,p,['status','age_ms','issues']);
+    enumeration(layer.status,`${p}.status`,['VALID','INVALID','STALE','FUTURE']);
+    if(layer.age_ms!==null&&!Number.isFinite(layer.age_ms))fail(`${p}.age_ms`,'expected finite milliseconds or null');
+    qualityIssues(layer.issues,`${p}.issues`);
+    if(layer.status==='VALID'&&layer.issues.length)fail(p,'valid height cannot have errors');
+  }
+  const allValid=!q.issues.length&&q.ground_5ft.status==='VALID'&&q.canopy_30ft.status==='VALID';
+  if((q.overall_status==='VALID')!==allValid)fail('data_quality.overall_status','must reflect independent input checks');
+}
+
 export function assertSnapshot(data) {
   assertWeatherInput(data);
   const e = data.evaluation;
-  object(e, 'evaluation', ['single_station_5ft_status','single_station_5ft_reason','multi_height_status','headline_reason','triggered_rules','post_spray_volatility_risk'], ['caught_hidden_risk']);
+  object(e, 'evaluation', ['single_station_5ft_status','single_station_5ft_reason','multi_height_status','headline_reason','triggered_rules','post_spray_volatility_risk'], ['caught_hidden_risk','data_quality']);
   enumeration(e.single_station_5ft_status, 'single_station_5ft_status', STATUSES);
   enumeration(e.multi_height_status, 'multi_height_status', STATUSES);
-  if ('caught_hidden_risk' in e && (typeof e.caught_hidden_risk !== 'boolean' || e.caught_hidden_risk !== (e.single_station_5ft_status==='GO' && e.multi_height_status==='STOP'))) fail('caught_hidden_risk', 'must match the two station statuses');
+  if('data_quality' in e)assertDataQuality(e.data_quality);
+  const qualifies=e.triggered_rules?.some(r=>r.severity==='STOP'&&r.is_upper_or_cross_height_hazard===true&&r.provenance!=='SAFETY_FAILSAFE');
+  const honestHidden=e.single_station_5ft_status==='GO'&&e.multi_height_status==='STOP' &&
+    e.data_quality?.overall_status==='VALID'&&qualifies;
+  const expectedHidden=e.data_quality?!!honestHidden:
+    e.single_station_5ft_status==='GO'&&e.multi_height_status==='STOP';
+  if('caught_hidden_risk' in e && (typeof e.caught_hidden_risk!=='boolean'||e.caught_hidden_risk!==expectedHidden))
+    fail('caught_hidden_risk','must reflect qualified upper-height STOP with valid readings, or legacy statuses');
   for (const k of ['single_station_5ft_reason','headline_reason','post_spray_volatility_risk']) text(e[k], `evaluation.${k}`);
   if (!Array.isArray(e.triggered_rules) || e.triggered_rules.length > 30) fail('triggered_rules', 'expected up to 30 rules');
   for (const [i,r] of e.triggered_rules.entries()) {
-    object(r, `triggered_rules[${i}]`, ['code','severity','metric','explanation']);
+    object(r, `triggered_rules[${i}]`, ['code','severity','metric','explanation'],
+      ['provenance','source_heights','is_upper_or_cross_height_hazard']);
     for (const k of ['code','metric','explanation']) text(r[k], `triggered_rules[${i}].${k}`);
     enumeration(r.severity, `triggered_rules[${i}].severity`, STATUSES);
+    const metadata=['provenance','source_heights','is_upper_or_cross_height_hazard'];
+    if(metadata.some(k=>k in r)){
+      if(!metadata.every(k=>k in r))fail(`triggered_rules[${i}]`,'rule provenance must be complete');
+      enumeration(r.provenance,`triggered_rules[${i}].provenance`,
+        ['ILLUSTRATIVE_THRESHOLD','SAFETY_FAILSAFE']);
+      if(!Array.isArray(r.source_heights)||r.source_heights.length>2 ||
+        new Set(r.source_heights).size!==r.source_heights.length ||
+        r.source_heights.some(h=>h!==5&&h!==30))fail(`triggered_rules[${i}].source_heights`,'expected unique 5/30 ft heights');
+      if(typeof r.is_upper_or_cross_height_hazard!=='boolean')fail(`triggered_rules[${i}].is_upper_or_cross_height_hazard`,'expected boolean');
+      if(r.provenance==='SAFETY_FAILSAFE' && r.is_upper_or_cross_height_hazard)
+        fail(`triggered_rules[${i}]`,'integrity errors are not confirmed upper-height hazards');
+      if(r.provenance==='ILLUSTRATIVE_THRESHOLD' &&
+         r.is_upper_or_cross_height_hazard!==r.source_heights.includes(30))
+        fail(`triggered_rules[${i}]`,'rule height classification conflicts with source heights');
+    }
     if (STATUSES.indexOf(r.severity) > STATUSES.indexOf(e.multi_height_status)) fail('multi_height_status', 'cannot be lower than a triggered rule severity');
   }
   return data;
