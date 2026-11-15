@@ -354,6 +354,9 @@ test('production startup accepts a controlled fresh NWS response and exposes eve
     }
   });
   await page.goto('/');
+  // The default forecast state must hide the disconnected session card even while NWS is loading.
+  await expect(page.locator('#session-panel')).toBeHidden();
+  await expect(page.locator('#forecast-session-notice')).toBeVisible();
   await expect(page.locator('#weather-network')).toContainText('Fresno, CA: NWS model retrieved', { timeout: 20000 });
   await expect(page.locator('#source-badge')).toContainText('NWS FORECAST');
   await expect(page.locator('#orchard')).toBeVisible();
