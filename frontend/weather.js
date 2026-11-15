@@ -298,7 +298,10 @@ export async function loadOrchardForecast(id, profile, {nowMs=Date.now(), fetchI
     }catch{}
     if(source==='synthetic'){rows=offlineRows(start,location);fetched_at=null;issued_at=null;issuance_source=null;issuance_age_minutes=null;}
   }
-  const snapshots=rows.map(row=>evaluateSnapshot({timestamp:row.timestamp,scenario_name:`${source} · modeled orchard heights`,orchard_block:location.block,readings:estimateLayers(row,location),pesticide_profile:profile}));
+  // The issuance/retrieval clock and forecast valid time are not evaluation time.
+  // Use the explicit request clock when creating all 24 built-in screening results.
+  const evaluation_context={evaluationTimeMs:nowMs};
+  const snapshots=rows.map(row=>evaluateSnapshot({timestamp:row.timestamp,scenario_name:`${source} · modeled orchard heights`,orchard_block:location.block,readings:estimateLayers(row,location),pesticide_profile:profile},evaluation_context));
   validateForecast(snapshots,60);
   let station=null, station_error=null;
   if(stationRequest){
@@ -308,6 +311,6 @@ export async function loadOrchardForecast(id, profile, {nowMs=Date.now(), fetchI
       station_error=result.error.message;
     }else station=stationCheck(result.observation,rows,source,location,profile);
   }
-  return {location_id:id,location_label:location.label,station,station_error,source,fetched_at,issued_at,issuance_source,issuance_age_minutes,error,time_zone:location.zone,interval_minutes:60,snapshots,window:forecastWindow(snapshots,nowMs,location.zone)};
+  return {location_id:id,location_label:location.label,station,station_error,source,fetched_at,issued_at,issuance_source,issuance_age_minutes,error,time_zone:location.zone,interval_minutes:60,evaluation_context,snapshots,window:forecastWindow(snapshots,nowMs,location.zone)};
 }
 
