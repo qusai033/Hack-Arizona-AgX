@@ -1,9 +1,9 @@
 export const STATUSES = ['GO', 'CAUTION', 'STOP'];
 const fail = (path, message) => { throw new TypeError(`${path}: ${message}`); };
-function object(value, path, keys) {
+function object(value, path, keys, optional = []) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail(path, 'expected an object');
   for (const key of keys) if (!(key in value)) fail(`${path}.${key}`, 'required');
-  for (const key of Object.keys(value)) if (!keys.includes(key)) fail(`${path}.${key}`, 'unexpected field');
+  for (const key of Object.keys(value)) if (!keys.includes(key) && !optional.includes(key)) fail(`${path}.${key}`, 'unexpected field');
 }
 function text(value, path) {
   if (typeof value !== 'string' || !value.trim() || value.length > 2000) fail(path, 'expected nonempty text (max 2000 characters)');
@@ -14,8 +14,8 @@ function number(value, path, min, max) {
 function enumeration(value, path, choices) {
   if (!choices.includes(value)) fail(path, `expected ${choices.join(', ')}`);
 }
-export function assertSnapshot(data) {
-  object(data, 'snapshot', ['timestamp', 'scenario_name', 'orchard_block', 'readings', 'pesticide_profile', 'evaluation']);
+export function assertWeatherInput(data) {
+  object(data, 'snapshot', ['timestamp', 'scenario_name', 'orchard_block', 'readings', 'pesticide_profile'], ['evaluation']);
   for (const k of ['timestamp','scenario_name','orchard_block']) text(data[k], k);
   if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(data.timestamp) || !Number.isFinite(Date.parse(data.timestamp))) fail('timestamp', 'expected ISO 8601 with timezone');
   object(data.readings, 'readings', ['ground_5ft','canopy_30ft']);
@@ -28,7 +28,10 @@ export function assertSnapshot(data) {
     number(r.wind_dir_deg, `${p}.wind_dir_deg`, 0, 359.999999);
     enumeration(r.wind_dir_cardinal, `${p}.wind_dir_cardinal`, ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']);
   }
-  const p = data.pesticide_profile;
+  assertProfile(data.pesticide_profile);
+  return data;
+}
+export function assertProfile(p) {
   object(p, 'pesticide_profile', ['name','volatility_class','nozzle_droplet_size','min_wind_mph','max_wind_mph','post_spray_monitor_hours']);
   text(p.name, 'pesticide_profile.name');
   enumeration(p.volatility_class, 'volatility_class', ['LOW','MEDIUM','HIGH']);
@@ -36,10 +39,15 @@ export function assertSnapshot(data) {
   number(p.min_wind_mph, 'min_wind_mph', 0, 250);
   number(p.max_wind_mph, 'max_wind_mph', p.min_wind_mph, 250);
   number(p.post_spray_monitor_hours, 'post_spray_monitor_hours', 0, 168);
+  return p;
+}
+export function assertSnapshot(data) {
+  assertWeatherInput(data);
   const e = data.evaluation;
-  object(e, 'evaluation', ['single_station_5ft_status','single_station_5ft_reason','multi_height_status','headline_reason','triggered_rules','post_spray_volatility_risk']);
+  object(e, 'evaluation', ['single_station_5ft_status','single_station_5ft_reason','multi_height_status','headline_reason','triggered_rules','post_spray_volatility_risk'], ['caught_hidden_risk']);
   enumeration(e.single_station_5ft_status, 'single_station_5ft_status', STATUSES);
   enumeration(e.multi_height_status, 'multi_height_status', STATUSES);
+  if ('caught_hidden_risk' in e && (typeof e.caught_hidden_risk !== 'boolean' || e.caught_hidden_risk !== (e.single_station_5ft_status==='GO' && e.multi_height_status==='STOP'))) fail('caught_hidden_risk', 'must match the two station statuses');
   for (const k of ['single_station_5ft_reason','headline_reason','post_spray_volatility_risk']) text(e[k], `evaluation.${k}`);
   if (!Array.isArray(e.triggered_rules) || e.triggered_rules.length > 30) fail('triggered_rules', 'expected up to 30 rules');
   for (const [i,r] of e.triggered_rules.entries()) {

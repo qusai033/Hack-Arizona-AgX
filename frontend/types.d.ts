@@ -28,7 +28,25 @@ export interface CanopySnapshot {
     headline_reason: string;
     triggered_rules: { code: string; severity: Status; metric: string; explanation: string }[];
     post_spray_volatility_risk: string;
+    /** v1.1: engine always emits this; optional only for legacy v1 imports. */
+    caught_hidden_risk?: boolean;
   };
+}
+export type WeatherInput = Omit<CanopySnapshot, 'evaluation'> & {evaluation?: CanopySnapshot['evaluation']};
+export interface SpraySession {
+  state: 'BEFORE_SPRAY' | 'SPRAYING_IN_PROGRESS' | 'POST_SPRAY_CURING';
+  orchard_block: string;
+  /** Frozen profile actually applied; independent of the current selector. */
+  pesticide_profile: PesticideProfile;
+  started_at: string | null;
+  ended_at: string | null;
+  inversion_at_end_f: number | null;
+}
+export interface EvaluationContext {
+  session?: SpraySession;
+  nowMs?: number;
+  maxAgeMs?: number;
+  labelProhibitsInversion?: boolean;
 }
 /** Forecast entries are the same shared contract, one per evenly spaced interval. */
 export interface DashboardAdapter {

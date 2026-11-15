@@ -11,7 +11,7 @@
 | `frontend/timeline.js` | Forecast continuity checks and next GO interval |
 | `frontend/demo.js` | Explicitly simulated scenarios and selector behavior |
 
-No framework, API URL, or authentication scheme was assumed. Do not ship API credentials in this client. Integration code runs after the app module; `window.CanopyGuard` is the public interface. All input snapshots, evaluator outputs, and forecast elements use **exactly** the supplied shared JSON shape. There are no added fields inside those objects. Extra keys are rejected intentionally; coordinate contract changes across the team.
+No framework, API URL, or authentication scheme was assumed. Do not ship API credentials in this client. Integration code runs after the app module; `window.CanopyGuard` is the public interface. All snapshots use the shared contract. The authorized v1.1 extension adds `evaluation.caught_hidden_risk`; the engine always emits it, and the validator still accepts legacy v1 snapshots without it. Other extra keys remain rejected. Session context and diagnostics remain outside the snapshot.
 
 ## Teammate 2: current risk evaluation
 
@@ -48,7 +48,7 @@ await window.CanopyGuard.connect({
 });
 ```
 
-These endpoints are integration examples, not implemented services. Live mode **never** invokes `evaluateDemo`. The current and forecast evaluation fields are authoritative. `evaluateProfile` is optional; without it the selectors are disabled. Persist the chosen profile in your backend so subsequent `loadSnapshot()` calls return that same selection. The evaluator may not silently substitute a different profile.
+These endpoints are integration examples, not implemented services. Live mode consumes the connected evaluator's current and forecast evaluation fields. The built-in engine is available from `frontend/engine/index.js`; both Node backends and browser adapters may call it synchronously. The `evaluateDemo` wrapper now uses that same engine with simulated readings. `evaluateProfile` is optional; without it the selectors are disabled. Persist the chosen profile in your backend so subsequent `loadSnapshot()` calls return that same selection. The evaluator may not silently substitute a different profile.
 
 Five minutes is a configurable UI freshness default, not a scientifically validated sampling requirement. In live mode, stale (> maxAgeMs), future (> 60 seconds), malformed, and unavailable snapshots suppress any previous GO, remove the old visualizer/forecast, and show **DATA UNAVAILABLE — DO NOT SPRAY**. A one-second watchdog catches aging observations even between polls. Loading a new profile suppresses the previous decision while evaluation is pending. In-flight replies from old demo selections/connections are discarded. Failed forecast fetches remove the old window without replacing a valid current decision.
 
@@ -72,10 +72,16 @@ window.CanopyGuard.useDemo('trap'); // or 'marginal' / 'clear'
 
 1. Start on **Hidden risk**: ground station GO versus multi-height STOP. Point to +4.5°F and +7.6 mph / 95°.
 2. Show the warm cap and trapped droplets; inspect both heights. Compass arrows show destination; badges show wind FROM direction.
-3. Select **Marginal**. Switch high → low volatility and fine → coarse droplets to move CAUTION → GO under the illustrative model.
+3. Select **Marginal**. Switch coarse → fine droplets to move CAUTION → STOP at 4.8 mph shear. The volatile preset also stops at 8.3 mph upper wind; the standard profile cautions.
 4. Return to **Hidden risk**: the atmospheric STOP remains even with a less drift-prone demo profile.
 5. Show the simulated 09:00–13:30 GO window and select a later red period. Both the window and period text derive from forecast data.
 
 ## Validation
 
 `npm test` covers contract failures, all scenario/profile combinations, persistent atmospheric STOPs, circular bearing differences, freshness, forecast gaps/ordering, expired/no-GO windows, HTML escaping, and wind-vector/cap behavior. Browser QA should additionally verify the three scenario buttons, selector changes, sensor tabs, animation pause, forecast selection, JSON errors, keyboard focus, narrow layouts, and actual backend integration when available.
+
+## Teammate 2 engine is now included
+
+Use `evaluateSnapshot(weatherPayload, {session: active_spray_session, nowMs: Date.now()})` in your **current observation** adapter; omit session if none is recorded. For forecast rows, omit `nowMs` and current-session context unless explicitly modeling that treatment. The engine itself never reads the clock. Do not pass a current `nowMs` to future forecasts.
+
+See [DECISION_ENGINE.md](DECISION_ENGINE.md) for the complete API. Four preset selections and demo session controls are integrated into the dashboard. The actual applied profile is locked while spraying. The “Demo: treated 2 hrs ago” action records a simulated HIGH treatment; changing the next-product selector does not remove its alert. Session controls are disabled for imported/live observations; persist real sessions in the backend.

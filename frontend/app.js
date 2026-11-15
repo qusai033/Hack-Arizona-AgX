@@ -2,19 +2,28 @@ import { assertSnapshot, assertFresh, deltas, escapeHTML as esc, signed } from '
 import { scenario, evaluateDemo, demoForecast } from './demo.js';
 import { orchardSVG } from './visualizer.js';
 import { validateForecast, nextWindow, formatTime } from './timeline.js';
+import { PROFILES, getProfile, thresholdsFor } from './engine/profiles.js';
+import { wetBulbDepression } from './engine/wet-bulb.js';
+import { createSession, startSpray, finishSpray, monitorSession } from './engine/session.js';
 
 const $ = id => document.getElementById(id);
 const titles = { GO:'SAFE TO SPRAY NOW', CAUTION:'CAUTION — MARGINAL DRIFT RISK', STOP:'DO NOT SPRAY — HIGH DRIFT RISK' };
 const icons = { GO:'✓', CAUTION:'!', STOP:'×' };
-const ruleNames = { INVERSION_DETECTED:'Temperature inversion', UPPER_WIND_EXCEEDED:'Upper wind exceeds limit', DIRECTIONAL_WIND_SHEAR:'Wind direction shift', GROUND_WIND_OUTSIDE_RANGE:'Ground wind outside range', DEMO_VOLATILITY:'Volatility sensitivity', DEMO_FINE_DROPLETS:'Fine-droplet sensitivity' };
+const ruleNames = { INVERSION_DETECTED:'Temperature inversion', UPPER_WIND_EXCEEDED:'Upper wind exceeds limit', GROUND_WIND_EXCEEDED:'Ground wind exceeds limit', DIRECTIONAL_WIND_SHEAR:'Wind direction shift', VERTICAL_WIND_SHEAR:'Vertical wind shear', GROUND_WIND_TOO_CALM:'Ground wind too calm', UPPER_WIND_TOO_CALM:'Upper wind too calm', GROUND_WIND_CAUTION:'Ground wind near limit', UPPER_WIND_CAUTION:'Upper wind near limit', GROUND_EVAPORATIVE_RISK:'Ground evaporation risk', UPPER_EVAPORATIVE_RISK:'Canopy evaporation risk', POST_SPRAY_VOLATILITY_ALERT:'Post-spray volatility alert', DATA_INVALID:'Evaluation unavailable' };
 let snapshot, mode='demo', activeScenario='trap', selectedHeight='canopy_30ft', adapter=null;
 let forecast=[], intervalMinutes=30, timeZone='America/Los_Angeles', revision=0, timer, busy=false, invalid=false;
+let session=null;
 let paused=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function controls() {
-  const enabled=!busy&&!invalid&&(mode==='demo'||!!adapter?.evaluateProfile);
+  const enabled=!busy&&!invalid&&(mode==='demo'||!!adapter?.evaluateProfile)&&session?.state!=='SPRAYING_IN_PROGRESS';
   $('volatility').disabled=!enabled; $('nozzle').disabled=!enabled;
-  $('profile-hint').textContent=busy ? 'Updating the evaluation…' : mode==='demo' ? 'Demo rules only. Try “Marginal” with low volatility + coarse droplets.' : adapter?.evaluateProfile ? 'Profile changes are evaluated by the connected risk engine.' : 'Profile controls require the team’s risk evaluator. This snapshot is read-only.';
+  $('profile-preset').disabled=!enabled;
+  $('profile-hint').textContent=busy ? 'Updating the evaluation…' : mode==='demo' ? 'Generic screening presets, not product labels. Try “Marginal”: coarse droplets → CAUTION; fine droplets → STOP.' : adapter?.evaluateProfile ? 'Profile changes are evaluated by the connected risk engine.' : 'Profile controls require the team’s risk evaluator. This snapshot is read-only.';
+  $('session-start').disabled=mode!=='demo'||invalid||busy||session?.state==='SPRAYING_IN_PROGRESS'||session?.state==='POST_SPRAY_CURING'||snapshot?.evaluation.multi_height_status!=='GO';
+  $('session-finish').disabled=mode!=='demo'||invalid||session?.state!=='SPRAYING_IN_PROGRESS';
+  $('session-example').disabled=mode!=='demo'||invalid||session?.state==='SPRAYING_IN_PROGRESS';
+  $('session-reset').disabled=mode!=='demo'||!session;
   document.querySelectorAll('[data-scenario]').forEach(b=>b.setAttribute('aria-pressed',String(mode==='demo'&&b.dataset.scenario===activeScenario)));
 }
 function source() {
@@ -29,6 +38,8 @@ function renderSensor() {
   $('orchard-svg').innerHTML=orchardSVG(snapshot,selectedHeight);
   $('sensor-title').textContent=upper?'Above canopy':'Inside the orchard';
   $('sensor-details').innerHTML=[['Temperature',`${r.temp_f.toFixed(1)}°F`],['Wind speed',`${r.wind_speed_mph.toFixed(1)} mph`],['Wind from',`${r.wind_dir_cardinal} · ${Math.round(r.wind_dir_deg)}°`],['Humidity',`${r.humidity_pct.toFixed(0)}%`]].map(([k,v])=>`<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('');
+  const wet=wetBulbDepression(r.temp_f,r.humidity_pct);
+  $('sensor-details').insertAdjacentHTML('beforeend',`<div><dt>Wet-bulb depression<br><small>Approx. at sea level</small></dt><dd>${wet.available?`${wet.depression_c.toFixed(1)}°C`:'N/A'}</dd></div>`);
   $('layer-note').textContent=deltas(snapshot).temperature>0?'Warm air sits above cooler ground air. The animation illustrates lateral drift beneath that cap.':'The upper sensor is no warmer than the lower sensor. Review every risk rule before acting.';
   document.querySelectorAll('[data-height]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.height===selectedHeight)));
 }
@@ -52,16 +63,29 @@ function renderSnapshot() {
   $('ground-status').className=`result-badge ${e.single_station_5ft_status}`;
   $('ground-status').textContent=`${icons[e.single_station_5ft_status]} Ground Station Says: ${e.single_station_5ft_status}${e.single_station_5ft_status==='GO'?' (Looks Safe)':''}`;
   $('ground-reason').textContent=e.single_station_5ft_reason;
-  const caught=e.single_station_5ft_status==='GO'&&s==='STOP';
+  const caught=e.caught_hidden_risk??(e.single_station_5ft_status==='GO'&&s==='STOP');
   $('canopy-status').className=`result-badge ${s}`;
   $('canopy-status').textContent=`${icons[s]} CanopyGuard Says: ${s}${caught?' (Hidden Drift Risk Caught!)':''}`;
   $('delta-chips').innerHTML=`<span class="${d.temperature>0?'hot':''}">${signed(d.temperature)}°F ${d.temperature>0?'Inversion':'temperature difference'}</span><span>${signed(d.speed)} mph / ${Math.round(d.direction)}° Wind Shear</span>`;
   $('volatility').value=snapshot.pesticide_profile.volatility_class;
   $('nozzle').value=snapshot.pesticide_profile.nozzle_droplet_size;
-  $('profile-name').textContent=mode==='demo'?'Illustrative pesticide profile · Not a verified product label':snapshot.pesticide_profile.name;
-  $('monitor-title').textContent=`After the spray, keep watch for ${snapshot.pesticide_profile.post_spray_monitor_hours} hours.`;
+  $('profile-name').textContent=snapshot.pesticide_profile.name+(mode==='demo'?' · Generic screening preset':'');
+  const p=snapshot.pesticide_profile;
+  $('profile-preset').value=Object.entries(PROFILES).find(([,v])=>Object.keys(v).every(k=>v[k]===p[k]))?.[0]||'custom';
+  try {const limits=thresholdsFor(p);
+    $('effective-limits').textContent=mode==='demo'?`Wind ${limits.minWind}–${limits.maxWind} mph · Inversion STOP >${limits.inversionStopAbove}°F · Speed-shear STOP ≥${limits.speedShearStopAt} mph`:`Supplied profile wind range: ${p.min_wind_mph}–${p.max_wind_mph} mph. Evaluation comes from the connected source.`;
+  }catch{$('effective-limits').textContent='Profile limits conflict with the built-in screening policy. Review the evaluation.';}
+  $('monitor-title').textContent='After the spray, keep watch.';
   $('monitor-risk').textContent=e.post_spray_volatility_risk;
-  renderSensor(); controls();
+  renderSession();renderSensor(); controls();
+}
+function renderSession() {
+  $('session-panel').classList.remove('has-alert');
+  if(!session){$('session-state').textContent='BEFORE SPRAY';$('session-summary').textContent=mode==='demo'?'No treatment recorded. Session controls are simulated for the demonstration.':'No local demo session. Recorded treatment monitoring must be supplied by the connected engine.';return;}
+  const monitor=monitorSession(snapshot,session);
+  $('session-state').textContent=session.state.replaceAll('_',' ');
+  $('session-summary').textContent=`Recorded treatment: ${session.pesticide_profile.name}. ${monitor.message}`;
+  $('session-panel')?.classList.toggle('has-alert',!!monitor.alert);
 }
 function clearForecast(message='No forecast connected. Awaiting the team’s forecast module.') {
   forecast=[]; $('timeline').replaceChildren(); $('timeline-labels').replaceChildren();
@@ -134,11 +158,11 @@ async function refresh() {
     snapshot=structuredClone(next);busy=false;renderSnapshot();await fetchForecast(ticket);
   } catch(error) {if(ticket===revision)fail(error);}
 }
-async function changeProfile() {
+async function changeProfile(preset) {
   if(invalid||busy)return;
-  const profile={...snapshot.pesticide_profile,volatility_class:$('volatility').value,nozzle_droplet_size:$('nozzle').value};
+  const profile=preset||{...snapshot.pesticide_profile,name:'Custom screening profile',volatility_class:$('volatility').value,nozzle_droplet_size:$('nozzle').value};
   const ticket=++revision;
-  if(mode==='demo') {snapshot=evaluateDemo(snapshot,profile);renderSnapshot();forecast=demoForecast(profile);renderForecast();return;}
+  if(mode==='demo') {snapshot=evaluateDemo(snapshot,profile,session);renderSnapshot();forecast=demoForecast(profile);renderForecast();return;}
   if(!adapter?.evaluateProfile)return;
   busy=true;controls();clearForecast('Updating forecast for the selected profile…');
   // Remove the previous GO while the new combination is being evaluated.
@@ -156,12 +180,14 @@ async function changeProfile() {
 }
 function useDemo(name='trap') {
   if(!['trap','marginal','clear'].includes(name))throw new Error('Unknown demo scenario');
+  const previousProfile=mode==='demo'?snapshot?.pesticide_profile:undefined;
+  if(mode!=='demo')session=null;
   ++revision;clearInterval(timer);adapter=null;mode='demo';activeScenario=name;busy=false;
   timeZone='America/Los_Angeles';intervalMinutes=30;
-  snapshot=scenario(name);renderSnapshot();forecast=demoForecast(snapshot.pesticide_profile);renderForecast();
+  snapshot=scenario(name,previousProfile);if(session)snapshot=evaluateDemo(snapshot,snapshot.pesticide_profile,session);renderSnapshot();forecast=demoForecast(snapshot.pesticide_profile);renderForecast();
 }
 function setSnapshot(data) {
-  ++revision;clearInterval(timer);adapter=null;mode='imported';busy=false;source();
+  ++revision;clearInterval(timer);adapter=null;mode='imported';busy=false;session=null;source();
   try {snapshot=structuredClone(assertSnapshot(data));renderSnapshot();clearForecast();}
   catch(error){fail(error);throw error;}
 }
@@ -170,7 +196,7 @@ async function connect(config) {
   const zone=config.timeZone||'America/Los_Angeles';new Intl.DateTimeFormat('en-US',{timeZone:zone});
   if(config.maxAgeMs!==undefined&&(!Number.isFinite(config.maxAgeMs)||config.maxAgeMs<=0))throw new Error('maxAgeMs must be positive.');
   if(config.pollMs!==undefined&&(!Number.isFinite(config.pollMs)||config.pollMs<1000))throw new Error('pollMs must be at least 1000.');
-  ++revision;clearInterval(timer);adapter=config;mode='live';busy=false;timeZone=zone;intervalMinutes=config.forecastIntervalMinutes||30;source();
+  ++revision;clearInterval(timer);adapter=config;mode='live';busy=false;session=null;timeZone=zone;intervalMinutes=config.forecastIntervalMinutes||30;source();
   fail(new Error('Connecting to orchard sensors…'));
   await refresh();
   if(adapter!==config)return;
@@ -182,7 +208,19 @@ async function connect(config) {
 }
 document.querySelectorAll('[data-scenario]').forEach(b=>b.addEventListener('click',()=>useDemo(b.dataset.scenario)));
 document.querySelectorAll('[data-height]').forEach(b=>b.addEventListener('click',()=>{if(invalid)return;selectedHeight=b.dataset.height;renderSensor();}));
-$('volatility').addEventListener('change',changeProfile);$('nozzle').addEventListener('change',changeProfile);
+$('volatility').addEventListener('change',()=>changeProfile());$('nozzle').addEventListener('change',()=>changeProfile());
+$('profile-preset').addEventListener('change',()=>changeProfile(getProfile($('profile-preset').value)));
+function updateDemoSession(){snapshot=evaluateDemo(snapshot,snapshot.pesticide_profile,session);renderSnapshot();}
+$('session-start').addEventListener('click',()=>{if($('session-start').disabled)return;session=startSpray(createSession(snapshot.orchard_block,snapshot.pesticide_profile),snapshot.timestamp);updateDemoSession();});
+$('session-finish').addEventListener('click',()=>{if($('session-finish').disabled)return;session=finishSpray(session,snapshot.timestamp,snapshot);updateDemoSession();});
+$('session-reset').addEventListener('click',()=>{session=null;updateDemoSession();});
+$('session-example').addEventListener('click',()=>{
+  if($('session-example').disabled)return;
+  const ended=new Date(Date.parse(snapshot.timestamp)-7200000).toISOString(),started=new Date(Date.parse(ended)-1800000).toISOString();
+  const prior=scenario('clear',getProfile('volatile_formulation'));prior.timestamp=ended;
+  session=finishSpray(startSpray(createSession(snapshot.orchard_block,prior.pesticide_profile),started),ended,prior);
+  updateDemoSession();
+});
 function motion(){document.body.classList.toggle('paused',paused);$('motion-toggle').setAttribute('aria-pressed',String(paused));$('motion-toggle').textContent=paused?'Resume animation ▷':'Pause animation Ⅱ';}
 $('motion-toggle').addEventListener('click',()=>{paused=!paused;motion();});motion();
 $('import-button').addEventListener('click',()=>$('json-file').click());
@@ -192,7 +230,7 @@ $('json-file').addEventListener('change',async(event)=>{
   catch(error){++revision;clearInterval(timer);adapter=null;mode='imported';source();fail(error);}
   finally{event.target.value='';}
 });
-window.CanopyGuard=Object.freeze({connect,refresh,setSnapshot,useDemo,setForecast(data,options={}){
+window.CanopyGuard=Object.freeze({connect,refresh,setSnapshot,useDemo,getSession:()=>session?structuredClone(session):null,setForecast(data,options={}){
   if(invalid)throw new Error('A valid snapshot is required before forecasts.');
   intervalMinutes=options.intervalMinutes||30;
   validateForecast(data,intervalMinutes);

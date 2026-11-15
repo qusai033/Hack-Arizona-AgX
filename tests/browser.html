@@ -29,7 +29,19 @@ document.getElementById('run').onclick=async()=>{
   assert(d.getElementById('decision-title').textContent.includes('DO NOT SPRAY'),'Obsolete live reply cannot overwrite demo STOP');
   await api.connect({mode:'live',maxAgeMs:10,loadSnapshot:async()=>live()});await new Promise(r=>setTimeout(r,1100));
   assert(d.getElementById('decision-title').textContent.includes('DATA UNAVAILABLE'),'Watchdog suppresses aging GO between polls');
-  api.useDemo('trap');output.textContent+='ALL BROWSER CHECKS PASSED';
+  api.useDemo('trap');
+  d.getElementById('session-example').click();
+  assert(d.getElementById('session-state').textContent==='POST SPRAY CURING','Two-hour treatment demo enters POST_SPRAY_CURING');
+  assert(d.getElementById('rules').textContent.includes('Post-spray volatility alert'),'Historical HIGH treatment emits post-spray alert');
+  const preset=d.getElementById('profile-preset');preset.value='dormant_oil';preset.dispatchEvent(new w.Event('change'));
+  assert(d.getElementById('rules').textContent.includes('Post-spray volatility alert'),'Changing current profile cannot erase recorded-treatment alert');
+  d.getElementById('session-reset').click();api.useDemo('clear');d.getElementById('session-start').click();
+  assert(d.getElementById('session-state').textContent==='SPRAYING IN PROGRESS','Demo session starts explicitly');
+  assert(d.getElementById('profile-preset').disabled,'Applied profile cannot change during spraying');
+  api.useDemo('trap');assert(d.getElementById('decision-title').textContent.includes('DO NOT SPRAY'),'New hazard is shown while spraying');
+  d.getElementById('session-finish').click();assert(d.getElementById('session-state').textContent==='POST SPRAY CURING','Finishing session starts post-spray monitoring');
+  d.getElementById('session-reset').click();
+  output.textContent+='ALL BROWSER CHECKS PASSED';
  }catch(error){output.textContent+='FAIL '+error.message;api.useDemo('trap');}
 };
 </script></html>
