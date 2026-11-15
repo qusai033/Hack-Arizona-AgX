@@ -19,17 +19,23 @@ export function assertWeatherInput(data) {
   for (const k of ['timestamp','scenario_name','orchard_block']) text(data[k], k);
   if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(data.timestamp) || !Number.isFinite(Date.parse(data.timestamp))) fail('timestamp', 'expected ISO 8601 with timezone');
   object(data.readings, 'readings', ['ground_5ft','canopy_30ft']);
-  for (const height of ['ground_5ft','canopy_30ft']) {
-    const r = data.readings[height], p = `readings.${height}`;
-    object(r, p, ['temp_f','humidity_pct','wind_speed_mph','wind_dir_deg','wind_dir_cardinal']);
-    number(r.temp_f, `${p}.temp_f`, -100, 180);
-    number(r.humidity_pct, `${p}.humidity_pct`, 0, 100);
-    number(r.wind_speed_mph, `${p}.wind_speed_mph`, 0, 250);
-    number(r.wind_dir_deg, `${p}.wind_dir_deg`, 0, 359.999999);
-    enumeration(r.wind_dir_cardinal, `${p}.wind_dir_cardinal`, ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']);
-  }
+  for (const height of ['ground_5ft','canopy_30ft']) assertReading(data.readings[height],height);
   assertProfile(data.pesticide_profile);
   return data;
+}
+/** The same field contract for a single height, reused by the evaluator's
+ * independent-quality preflight. Do not infer missing measurements.
+ */
+export function assertReading(r,height) {
+  if(!['ground_5ft','canopy_30ft'].includes(height))fail('height','unknown weather height');
+  const p=`readings.${height}`;
+  object(r, p, ['temp_f','humidity_pct','wind_speed_mph','wind_dir_deg','wind_dir_cardinal']);
+  number(r.temp_f, `${p}.temp_f`, -100, 180);
+  number(r.humidity_pct, `${p}.humidity_pct`, 0, 100);
+  number(r.wind_speed_mph, `${p}.wind_speed_mph`, 0, 250);
+  number(r.wind_dir_deg, `${p}.wind_dir_deg`, 0, 359.999999);
+  enumeration(r.wind_dir_cardinal, `${p}.wind_dir_cardinal`, ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']);
+  return r;
 }
 export function assertProfile(p) {
   object(p, 'pesticide_profile', ['name','volatility_class','nozzle_droplet_size','min_wind_mph','max_wind_mph','post_spray_monitor_hours']);
