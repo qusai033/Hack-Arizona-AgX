@@ -37,7 +37,44 @@
       <p class="profile-hint">Simulation controls are available only in explicitly enabled demo mode.</p>
     </section>
     <section id="orchard" class="orchard-panel" aria-labelledby="orchard-title"><div class="section-heading"><div><p class="eyebrow">WHAT’S HAPPENING ABOVE YOUR TREES</p><h2 id="orchard-title">The invisible, made visible.</h2></div><button id="motion-toggle" class="outline-button" aria-pressed="false">Pause animation <span aria-hidden="true">Ⅱ</span></button></div><div class="orchard-layout"><div class="diagram-wrap"><div id="orchard-svg"></div><p class="diagram-caption">Illustrative cross-section · Wind badges use compass direction · Not a plume model</p></div><aside class="sensor-inspector"><span class="eyebrow">INSPECT A SENSOR HEIGHT</span><div class="sensor-tabs" role="group" aria-label="Sensor height"><button data-height="canopy_30ft" aria-pressed="true">30 ft</button><button data-height="ground_5ft" aria-pressed="false">5 ft</button></div><h3 id="sensor-title">Above canopy</h3><dl id="sensor-details"></dl><div class="layer-note" id="layer-note"></div></aside></div></section>
-    <section class="profile-panel" aria-labelledby="profile-title"><div><p class="eyebrow">APPLICATION SETUP</p><h2 id="profile-title">Your spray. Your conditions.</h2><p id="profile-name"></p><label class="preset-label" for="profile-preset">Screening preset<select id="profile-preset" aria-label="Screening preset"><option value="contact_fungicide">Standard contact fungicide</option><option value="volatile_formulation">Volatile formulation</option><option value="fine_airblast">Fine-mist airblast insecticide</option><option value="dormant_oil">Dormant horticultural oil</option><option value="custom" disabled>Custom profile</option></select></label></div><div class="selectors"><label for="volatility">Pesticide volatility<select id="volatility" aria-label="Pesticide volatility"><option value="LOW">Low volatility</option><option value="MEDIUM">Medium volatility</option><option value="HIGH">High volatility</option></select></label><label for="nozzle">Nozzle droplet size<select id="nozzle" aria-label="Nozzle droplet size"><option value="COARSE">Coarse droplets</option><option value="MEDIUM">Medium droplets</option><option value="FINE">Fine droplets</option></select></label><div id="effective-limits" class="profile-hint"></div></div><p id="profile-hint" class="profile-hint">Configurable screening thresholds; verify the actual product label.</p></section>
+    <section class="profile-panel" aria-labelledby="profile-title">
+      <div class="profile-heading">
+        <p class="eyebrow">APPLICATION SETUP</p>
+        <h2 id="profile-title">Your spray. Your conditions.</h2>
+        <p id="profile-name"></p>
+      </div>
+      <div class="profile-controls">
+        <label class="preset-label" for="profile-preset">Screening preset
+          <select id="profile-preset" aria-label="Screening preset">
+            <option value="contact_fungicide">Standard contact fungicide</option>
+            <option value="volatile_formulation">Volatile formulation</option>
+            <option value="fine_airblast">Fine-mist airblast insecticide</option>
+            <option value="dormant_oil">Dormant horticultural oil</option>
+            <option value="custom" disabled>Custom profile</option>
+          </select>
+        </label>
+        <div class="selectors">
+          <label for="volatility">Pesticide volatility
+            <select id="volatility" aria-label="Pesticide volatility">
+              <option value="LOW">Low volatility</option>
+              <option value="MEDIUM">Medium volatility</option>
+              <option value="HIGH">High volatility</option>
+            </select>
+          </label>
+          <label for="nozzle">Nozzle droplet size
+            <select id="nozzle" aria-label="Nozzle droplet size">
+              <option value="COARSE">Coarse droplets</option>
+              <option value="MEDIUM">Medium droplets</option>
+              <option value="FINE">Fine droplets</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="profile-help">
+        <div id="effective-limits" class="profile-hint"></div>
+        <p id="profile-hint" class="profile-hint">Configurable screening thresholds; verify the actual product label.</p>
+      </div>
+    </section>
     <section id="session-panel" class="session-panel" aria-labelledby="session-title"><div class="section-heading"><div><p class="eyebrow">DURING & AFTER APPLICATION</p><h2 id="session-title">Keep the last pass in view.</h2></div><span id="session-state" class="source-badge">BEFORE SPRAY</span></div><p id="session-summary">No treatment recorded.</p><div class="session-actions"><button id="session-start" class="outline-button">Start demo session</button><button id="session-finish" class="outline-button" disabled>Finish demo session</button><button id="session-example" class="outline-button">Demo: treated 2 hrs ago</button><button id="session-reset" class="text-button">Reset demo session</button></div><p class="profile-hint">Demo session only · A monitoring timer never replaces the product’s restricted-entry interval.</p></section>
     <section class="forecast-panel" id="forecast" aria-labelledby="forecast-title"><div class="section-heading"><div><p class="eyebrow">PLAN THE NEXT PASS</p><h2 id="forecast-title">Your next 24 hours.</h2></div><span class="source-badge" id="forecast-source">FORECAST LOADING</span></div><div class="session-actions forecast-controls"><label for="weather-location">Forecast city <select id="weather-location" aria-label="Forecast city"></select></label><button id="weather-fetch" class="outline-button" type="button">Refresh NWS forecast</button></div><p id="weather-network" role="status" aria-live="polite"></p><p class="profile-hint">NWS regional forecasts are modeled at 5 ft and 30 ft. These are not measurements from an orchard sensor. Check local conditions and product labels before spraying.</p><div id="next-window" class="next-window"></div><div class="timeline-scroll"><div class="timeline-inner"><div id="timeline" class="timeline" aria-label="Forecast intervals"></div><div id="timeline-labels" class="timeline-labels"></div></div></div><div class="forecast-bottom"><div class="legend"><span><i class="GO"></i>GO</span><span><i class="CAUTION"></i>CAUTION</span><span><i class="STOP"></i>STOP</span></div><span id="forecast-zone">Pacific time · Select a period for details</span></div><div id="forecast-detail" class="forecast-detail" aria-live="polite"></div></section>
     <section class="monitor-panel"><span class="monitor-icon" aria-hidden="true">◷</span><div><h3 id="monitor-title">After the spray, keep watch.</h3><p id="monitor-risk"></p></div></section>
