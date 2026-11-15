@@ -1,4 +1,5 @@
 import { deltas } from './contract.js';
+import { auditCSV } from './audit-csv.js';
 export {createAuditLog} from './audit-storage.js';
 
 export const hiddenRisk = snapshot => snapshot.evaluation.caught_hidden_risk ??
@@ -19,22 +20,7 @@ export function reasons(snapshot) {
 export function localDate(timestamp, zone) {
   return new Intl.DateTimeFormat('en-US',{dateStyle:'short',timeStyle:'medium',timeZone:zone}).format(new Date(timestamp));
 }
-const csvCell = value => {
-  let content=String(value??'');
-  if(typeof value==='string' && /^[\s\uFEFF]*[=+@-]|^[\t\r\n]/.test(content)) content="'"+content;
-  return '"'+content.replaceAll('"','""')+'"';
-};
-export function auditCSV(records, zone) {
-  const header=['Log ID','Recorded UTC','Recorded local','Time zone','Observation UTC','Observation local','Source','Event','Session state','Orchard block','Active pesticide','Recorded treatment','5 ft °F','5 ft mph','5 ft wind from','30 ft °F','30 ft mph','30 ft wind from','Canopy minus ground °F','Absolute speed shear mph','Direction shift degrees','Multi-height status','Trigger reasons','Single-station status','Hidden risk caught'];
-  const rows=records.map(({id,recorded_at,event,source,session,snapshot:s})=>{
-    const {ground_5ft:g,canopy_30ft:c}=s.readings,d=deltas(s),e=s.evaluation;
-    const applied=session?.pesticide_profile?.name;
-    return [id,recorded_at,localDate(recorded_at,zone),zone,s.timestamp,localDate(s.timestamp,zone),source,event,session?.state,
-      s.orchard_block,session?.state==='SPRAYING_IN_PROGRESS'?applied:s.pesticide_profile.name,applied,g.temp_f,g.wind_speed_mph,g.wind_dir_cardinal,c.temp_f,c.wind_speed_mph,c.wind_dir_cardinal,
-      Number(d.temperature.toFixed(3)),Number(Math.abs(d.speed).toFixed(3)),Number(d.direction.toFixed(3)),e.multi_height_status,reasons(s),e.single_station_5ft_status,hiddenRisk(s)];
-  });
-  return [header,...rows].map(row=>row.map(csvCell).join(',')).join('\r\n')+'\r\n';
-}
+export { auditCSV };
 export function alertText(record) {
   const s=record.snapshot,e=s.evaluation,g=s.readings.ground_5ft,c=s.readings.canopy_30ft,d=deltas(s);
   const post=e.triggered_rules.find(rule=>rule.code==='POST_SPRAY_VOLATILITY_ALERT');

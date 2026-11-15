@@ -157,5 +157,5 @@ export function persistenceWarning(result) {
   if (codes.has('QUOTA_EXCEEDED')) messages.push('Browser storage is full; new activity is kept in this tab.');
   if (codes.has('WRITE_FAILED')) messages.push('Activity could not be saved; it remains in this tab.');
   if (codes.has('REMOVE_FAILED')) messages.push('Some demo activity could not be removed from storage and may return after reload.');
-  return messages.join(' ') + ' Keep this tab open and export CSV before closing. The CSV contains the readable activity summary, not every original evidence field.';
+  return messages.join(' ') + ' Keep this tab open and export CSV before closing. CSV includes readable activity and its available evidence; damaged or unsupported stored records are excluded.';
 }

@@ -64,4 +64,4 @@ The default location selection, startup request, 30-second refresh, stale-respon
 
 New audit records preserve the complete source snapshot, event ID, full treatment session and known evaluation context. Built-in demo/forecast records include the actual engine version, effective thresholds, diagnostics, and explicit recording versus observation/forecast-valid times; external/imported evaluations are labeled unverified rather than falsely attributed to the built-in engine. Existing v1 records stay readable with `evidence: null`, without invented historical metadata.
 
-See [docs/AUDIT_EVIDENCE.md](docs/AUDIT_EVIDENCE.md) for the field contract, replay tests, source provenance, and current **CSV/export limitations** (full evidence export remains Issue #17).
+See [docs/AUDIT_EVIDENCE.md](docs/AUDIT_EVIDENCE.md) for the field contract and replay tests, and [docs/AUDIT_INTEGRATION.md](docs/AUDIT_INTEGRATION.md) for the full-evidence PCA CSV schema and export behavior.

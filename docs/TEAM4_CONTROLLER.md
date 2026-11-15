@@ -73,6 +73,7 @@ selection, the judge replay, and expired forecast windows. Its embedded frames
 explicitly request demo mode so QA does not depend on external NWS availability.
 
 The follow-up [lifecycle integration](TEAM4_LIFECYCLE.md) implements #15 alert
-state, #16 recovery using #9's v2 evidence, and #18 Reset Demo/Step. The current
-CSV remains a readable summary; #17 owns complete evidence export and #19 owns
-the portable browser-test harness. Forecast issuance validation is separate #8.
+state, #16 recovery using #9's v2 evidence, and #18 Reset Demo/Step. The CSV includes
+the complete available v2 evidence added in #17 plus demo-run ownership. Print
+remains a summary, and #19 owns the portable browser-test harness. Forecast
+issuance validation is handled by #8.

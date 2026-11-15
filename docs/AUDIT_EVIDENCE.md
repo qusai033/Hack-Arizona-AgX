@@ -33,8 +33,14 @@ Reproducibility means the engine returned the same evaluation under the stored c
 
 Existing `canopyguard.audit.v1.<id>` storage keys are preserved. The reader returns historical records missing a schema version as `schema_version: 1` and `evidence: null`. Incomplete historical sessions remain unchanged for display and export; the system does not fabricate their treatment timestamps or engine version. Newly written v2 records are validated on read; malformed future-schema records are ineligible. Recoverable corrupt-storage warnings and migration recovery are tracked separately by Issue #16.
 
-## Export coverage (Issue #17 is separate)
+## Export coverage (Issue #17)
 
-The current **PCA CSV** and printable report retain their existing readable fields (times, source, event, orchard block, pesticide, 5 ft and 30 ft summary, drift deltas, decisions, triggered reasons, and session state/recorded treatment). **Neither currently exports the complete v2 evidence JSON, all rule thresholds, full session treatment timestamps, or engine diagnostics.** Full evidence CSV serialization and download regression tests are explicitly deferred to Issue #17. Browser storage contains the complete structured evidence, accessible for local inspection with `window.CanopyGuardAudit.list()`.
+The PCA CSV uses `frontend/audit-csv.js`, exposed through the existing `auditCSV` API in `frontend/audit.js`. It retains the previous readable/timezone-aware summary columns and now includes event identity/type, record schema version, evaluator kind/version, all raw 5 ft and 30 ft temperature/humidity/wind-speed/cardinal and numeric-bearing readings, separate timestamp roles, and JSON columns for the complete session, snapshot, effective thresholds/profile, evaluation, evaluation context, diagnostics, provenance, timestamps, and full evidence envelope.
+
+Historical v1 rows remain exportable. Missing historical evidence is explicitly represented by `[UNAVAILABLE]`; no engine version, thresholds, or treatment timestamps are reconstructed. The current evaluator has no separate rule-set version beyond its engine version and effective threshold/profile values, so no independent rule version is fabricated.
+
+The CSV serializer uses RFC 4180 quoting, neutralizes formula-like text values, preserves raw numeric precision, and emits a header-only file for an empty result. The UI applies the selected filter before export and exports all matching records even though the visible audit table caps its rendering at 250 rows. Parser-based tests verify JSON evidence round-trips against the stored record, including formula-like text, quotes, commas, newlines, Unicode, empty results, legacy records, and exports larger than 250 rows. See [AUDIT_INTEGRATION.md](AUDIT_INTEGRATION.md) for the detailed CSV field contract.
+
+The printable report remains a human-readable summary and is not a complete machine-readable evidence export. Browser storage is user-modifiable and is not a substitute for signed compliance records.
 
 The application does not sign or independently authenticate stored records. Keep label/regulatory decisions and official records outside this illustrative audit tool.

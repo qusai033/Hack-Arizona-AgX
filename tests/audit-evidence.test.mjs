@@ -96,11 +96,16 @@ test('missing treatment fields and non-reproducible built-in results cannot be r
   assert.throws(()=>log.append(edited,{source:'demo'}),/does not match/i);
 });
 
-test('existing PCA CSV is readable but does not falsely claim to export v2 configuration evidence',()=>{
+test('PCA CSV exports the versioned audit evidence envelope as machine-readable columns',()=>{
   const row=createAuditLog(null,{id:()=> 'csv'}).append(simulateWeather('trap'),{source:'demo'});
   const csv=auditCSV([row],'America/Los_Angeles');
   assert.match(csv,/INVERSION_DETECTED/);
-  assert.ok(!csv.includes('Effective thresholds'));
-  assert.ok(!csv.includes('Engine version'));
-  assert.ok(!csv.includes('Evidence JSON'));
+  assert.match(csv,/"Engine version"/);
+  assert.match(csv,/"Effective thresholds JSON"/);
+  assert.match(csv,/"Effective profile JSON"/);
+  assert.match(csv,/"Snapshot JSON"/);
+  assert.match(csv,/"Evaluation JSON"/);
+  assert.match(csv,/"Evaluation context JSON"/);
+  assert.match(csv,/"Timestamp evidence JSON"/);
+  assert.ok(csv.includes(row.evidence.engine_version));
 });

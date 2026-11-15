@@ -44,9 +44,10 @@ quota/write failure, and failed demo removal.
 Warnings immediately prompt export. Unsaved rows survive later reads, and
 already restored rows remain in memory if storage subsequently becomes unreadable.
 Cross-tab additions/deletions remain visible. A damaged key cannot be overwritten
-by a colliding event ID. CSV download still includes unsaved activity, but CSV and
-print remain readable summaries; #17 owns complete v2 evidence export. Closing a
-tab cannot recover activity that the browser refused to save.
+by a colliding event ID. CSV download includes unsaved activity and its complete
+available v2 evidence using the serializer merged in #28 (#17). This port adds
+the demo run ID to that export. Print remains a readable summary. Closing a tab
+cannot recover activity that the browser refused to save.
 
 ## Reset and Step (#18)
 
