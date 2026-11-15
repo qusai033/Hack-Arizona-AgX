@@ -26,7 +26,18 @@ Individual recorded and observation timestamps remain in readable columns. Simul
 
 CSV fields use RFC 4180 quoting for commas, quotes, line breaks, and Unicode. Formula-like user-controlled text is neutralized for spreadsheet applications, while numeric values (including negative deltas) are not rewritten. The serializer writes a header row when no records match and terminates rows with CRLF. The download UI prepends a UTF-8 BOM for spreadsheet compatibility.
 
-The selected audit filter is applied before serialization. The table displays at most the latest 250 matching records, but the CSV receives every matching record; it does not inherit the table's display cap.
+The selected audit filter is applied before serialization, then the export scope (below). The table displays at most the latest 250 records of the opened day, but the CSV receives every matching record in the chosen scope; it does not inherit the table's display cap. The final column, `Observation date`, is the calendar date the record is filed under in the daily history.
+
+## Daily weather history (calendar)
+
+The audit panel shows the log as a month calendar (weeks start on Sunday) with previous/next month, a month picker, and **Today**. `frontend/audit-calendar.js` holds the pure date grouping and day summary; `frontend/audit-ui.js` renders them.
+
+- **Filing.** Each record belongs to exactly one date: its snapshot timestamp's calendar date in the time zone stored in its v2 source provenance (`evidence.provenance.time_zone`) when present, otherwise in the dashboard's active time zone. Nothing is added to the stored record, and legacy v1 records are filed the same way without reconstructing metadata. For demo records the snapshot timestamp is the simulation clock, and for forecast records it is the forecast-valid time, so a record's date can differ from the date it was recorded.
+- **Calendar.** Days with records show a dot in the colour of their worst decision and a record count; today is outlined. Until a day or month is chosen, the calendar opens on the day of the most recently recorded record.
+- **Day record.** Selecting a day shows 5 ft and 30 ft high/low temperature, wind range and prevailing direction, humidity range, largest inversion and shear, hidden risks, conditions, pesticide, treatment and sources, followed by that day's rows in the audit table (newest first). Values come only from that day's records; a day without records says so and is never filled with estimates. Precipitation is shown as not recorded because audit records carry no rainfall value. The summary repeats the records' sources: simulated and forecast-modeled values are not on-site measurements.
+- **No de-duplication.** Every stored record is counted and shown. Distinct recorded events stay distinct even when their readings match, as described above.
+- **Export scope.** The **Export** selector applies to both the CSV and the printable report: the selected day, the ticked days (tick boxes on days, or **Week** to tick a week), the month on screen, or all history (the default). Scoped CSV files are named after the scope, for example `canopyguard-pca-audit-2026-11-15.csv`; the all-history file keeps the name `canopyguard-pca-audit.csv` and its recorded order. The printable report is grouped under a heading per day.
+- **Filters** (STOP, inversions, hidden risks) apply to the calendar, the day record, and exports.
 
 The browser uses one storage key per record and exposes no update or delete operation. Persistence depends on browser storage. If storage is unavailable or fills up, the interface identifies records as temporary. Browser owners can alter or clear local storage. Production evidence requires a server-side append-only audit store with access controls and retention.
 

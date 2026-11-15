@@ -26,6 +26,7 @@ The existing Node test runner remains available as npm test. The production buil
 - Checks alert dismissal followed by recurrence after a clear-to-risky scenario transition. Also verifies weather-override reset returns sliders to the fixture values without advancing the simulation clock, and treatment-session reset removes the demonstration treatment.
 - Runs all four judge-walkthrough steps, confirms the intended 9:00 AM bundled replay remains anchored, and parses the filtered hidden-risk CSV to ensure every exported ID belongs to a hidden-risk record.
 - Mocks the NWS points and hourly endpoints for fresh success, stale issuance, HTTP failure, and a delayed previous-city response. The app's normal fetch, validation, forecast mapping, and real evaluator still run; only the remote HTTP responses are fixtures.
+- Checks the audit calendar: it opens on the day of the latest record, an empty day is reported as empty, ticking a day enables the checked-days scope, and a selected-day CSV contains only that day's records with the `Observation date` column last.
 - Explicit demo-mode tests block every external origin. Production-mode tests allow only the controlled api.weather.gov fixtures.
 - Checks the built layout at 1280px, 768px, and 390px and fails on browser page errors or console errors.
 
