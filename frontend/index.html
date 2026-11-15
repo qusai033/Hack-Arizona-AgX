@@ -32,7 +32,7 @@
     </section>
     <section id="weather-panel" class="session-panel" aria-labelledby="weather-title">
       <h2 id="weather-title">Weather simulator</h2>
-      <div class="session-actions"><button id="weather-play" class="outline-button">Play</button><button id="weather-reset" class="outline-button">Reset sliders</button><label>Playback minute <input id="weather-minute" type="range" min="0" max="1440" step="1" value="0"> <output id="weather-clock"></output></label></div>
+      <div class="session-actions"><button id="weather-play" class="outline-button">Play</button><button id="weather-reset" class="outline-button">Reset sliders</button><label>Time of day <span class="clock-end">12 AM</span><input id="weather-minute" type="range" min="0" max="1439" step="1" value="0" aria-label="Time of day, 12:00 AM to 11:59 PM"><span class="clock-end">11:59 PM</span> <output id="weather-clock"></output></label></div>
       <div id="weather-sliders"></div>
       <div class="session-actions"><label>Forecast orchard <select id="weather-location"><option value="fresno">Fresno, CA</option><option value="willcox">Willcox, AZ</option></select></label><button id="weather-fetch" class="outline-button">Load NWS forecast</button></div>
       <p id="weather-network" role="status"></p>

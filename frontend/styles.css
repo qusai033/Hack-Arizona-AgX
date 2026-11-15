@@ -36,3 +36,5 @@ body{padding-bottom:130px}
 .judge-reveal .canopy-card,.judge-forecast #forecast,.judge-audit #audit-panel{outline:3px solid #458565;outline-offset:3px}
 #audit-print{display:none}
 @media print{body{padding:0;background:white;color:black}.topbar,main,#judge-bar,#alert-drawer,#alert-dialog,.skip-link{display:none!important}#audit-print{display:block;font:11pt system-ui}#audit-print section{break-inside:avoid;border-top:1px solid #777;padding:6pt 0}}
+
+.clock-end{font-size:.75rem;color:var(--muted, #6b7468);margin:0 .35rem;white-space:nowrap}

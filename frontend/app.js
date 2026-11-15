@@ -1,5 +1,5 @@
 import { mountAudit } from './audit-ui.js';
-import { simulateWeather, loadOrchardForecast, forecastWindow } from './weather.js';
+import { simulateWeather, loadOrchardForecast, forecastWindow, presetClockMinutes } from './weather.js';
 import { assertSnapshot, assertFresh, deltas, escapeHTML as esc, signed } from './contract.js';
 import { scenario, evaluateDemo, demoForecast } from './demo.js';
 import { orchardSVG } from './visualizer.js';
@@ -90,7 +90,7 @@ function renderSnapshot() {
   if(!judgeGroundOnly){
     let recordedSession=session;
     if(mode==='demo'&&activeScenario==='afternoon'){
-      recordedSession={state:simulationMinute<15?'SPRAYING_IN_PROGRESS':'POST_SPRAY_CURING',
+      recordedSession=simulationMinute<0?null:{state:simulationMinute<15?'SPRAYING_IN_PROGRESS':'POST_SPRAY_CURING',
         pesticide_profile:getProfile('volatile_formulation')};
     }
     audit?.accept(snapshot,{source:mode,session:recordedSession});
@@ -100,7 +100,7 @@ function renderSession() {
   $('session-panel').classList.remove('has-alert');
   if(mode==='demo'&&activeScenario==='afternoon'){
     const alert=snapshot.evaluation.triggered_rules.find(rule=>rule.code==='POST_SPRAY_VOLATILITY_ALERT');
-    $('session-state').textContent=simulationMinute<15?'SPRAYING IN PROGRESS':'POST SPRAY CURING';
+    $('session-state').textContent=simulationMinute<0?'BEFORE SPRAY':simulationMinute<15?'SPRAYING IN PROGRESS':'POST SPRAY CURING';
     $('session-summary').textContent=alert?.explanation??'Simulated volatile treatment starts at 3:00 PM and ends at 3:15 PM. Advance to 5:15 PM to see the alert.';
     $('session-panel').classList.toggle('has-alert',Boolean(alert));
     return;
@@ -302,22 +302,25 @@ for(const [height, title] of [['ground_5ft','5 ft ground'],['canopy_30ft','30 ft
 }
 function syncWeatherControls(){
   $('weather-panel').hidden=mode!=='demo';
-  $('weather-minute').max=activeScenario==='afternoon'?135:1440;
-  $('weather-minute').value=simulationMinute;
-  $('weather-clock').textContent=`Minute ${simulationMinute} · ${formatTime(snapshot.timestamp,'America/Los_Angeles')}`;
+  // The slider is the clock for the preset's day: 0 = 12:00 AM, 1439 = 11:59 PM.
+  $('weather-minute').min=0;$('weather-minute').max=1439;
+  $('weather-minute').value=presetClock()+simulationMinute;
+  $('weather-clock').textContent=formatTime(snapshot.timestamp,'America/Los_Angeles');
   for(const slider of $('weather-sliders').querySelectorAll('input')){
     const {heightKey,field}=slider.dataset;
     const value=overrides[heightKey]?.[field]??snapshot.readings[heightKey][field];
     slider.value=value;slider.previousElementSibling.value=value.toFixed(field==='wind_dir_deg'?0:1);
   }
 }
-$('weather-minute').addEventListener('input',event=>{simulationMinute=Number(event.target.value);replaySimulation();});
+const presetClock=()=>presetClockMinutes[activeScenario==='marginal'?'evaporation':activeScenario]??0;
+$('weather-minute').addEventListener('input',event=>{simulationMinute=Number(event.target.value)-presetClock();replaySimulation();});
 $('weather-reset').addEventListener('click',()=>{overrides={};replaySimulation();});
 $('weather-play').addEventListener('click',()=>{
   if(playback)return resetPlayback();
   $('weather-play').textContent='Pause';
+  if(presetClock()+simulationMinute>=1439){simulationMinute=-presetClock();replaySimulation();} // at 11:59 PM, replay from 12:00 AM
   playback=setInterval(()=>{
-    if(mode!=='demo'||simulationMinute>=Number($('weather-minute').max))return resetPlayback();
+    if(mode!=='demo'||presetClock()+simulationMinute>=1439)return resetPlayback();
     simulationMinute++;replaySimulation();
   },activeScenario==='afternoon'?80:40);
 });
