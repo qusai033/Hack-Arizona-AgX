@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#183c32">
-  <meta name="description" content="CanopyGuard orchard dashboard. See the weather above the trees before you spray.">
+  <meta name="description" content="CanopyGuard prototype showing illustrative weather data and decision-support records.">
   <title>CanopyGuard · Spray or Wait?</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
@@ -17,6 +17,7 @@
     <span class="event-label">HACK ARIZONA <b>AgX</b></span>
   </header>
   <main>
+    <aside class="prototype-disclaimer" aria-label="Prototype limitations"><strong>Prototype disclosure</strong><p>Decision-support prototype using simulated/regional inputs. Does not replace pesticide product labels, on-site measurements, or local regulations.</p><p>Weather estimates and screening results are illustrative only. A GO status means only that configured prototype checks passed; it is not application clearance or a safety determination.</p></aside>
     <div class="intro"><div><p class="eyebrow">YOUR ORCHARD. THE FULL PICTURE.</p><h1>Spray or wait?</h1><p id="block-name" class="block-name"></p></div><div class="source-info"><span id="source-badge" class="source-badge">◉ LOADING WEATHER DATA</span><span id="observation-time"></span><span id="scenario-name"></span><a id="demo-entry" class="mode-link" href="?mode=demo">Try interactive demo</a><a id="forecast-entry" class="mode-link" href="?mode=forecast" hidden>Return to NWS forecast</a></div></div>
     <div class="demo-strip" id="demo-controls"><span class="demo-caption">Explore a field scenario</span><div class="segmented" role="group" aria-label="Demo scenarios"><button data-scenario="trap" aria-pressed="true">Hidden risk <span>STOP</span></button><button data-scenario="calm" aria-pressed="false">Dead calm</button><button data-scenario="evaporation" aria-pressed="false">Hot and dry</button><button data-scenario="afternoon" aria-pressed="false">Post-spray inversion</button><button data-scenario="clear" aria-pressed="false">Well-mixed <span>GO</span></button></div><button class="text-button" id="import-button">Load JSON <span aria-hidden="true">↗</span></button><input type="file" accept="application/json,.json" id="json-file" hidden></div>
     <section id="judge-ground" class="decision GO" hidden aria-label="Ground-only demonstration">
@@ -28,7 +29,7 @@
     <div id="error-message" class="error-message" role="alert" hidden></div>
     <ul id="rules" class="rules" aria-label="Triggered risk rules"></ul>
     <section class="comparison-section" aria-labelledby="comparison-title"><div class="section-heading"><div><p class="eyebrow">THE DIFFERENCE IS 25 FEET</p><h2 id="comparison-title">One station doesn’t tell the whole story.</h2></div><span class="section-meta">Same orchard. Same moment.</span></div>
-      <div class="comparison-grid"><article class="station-card ground-card"><div class="card-heading"><span class="station-icon" aria-hidden="true">⌁</span><div><p class="eyebrow">THE VIEW YOU USUALLY GET</p><h3>5 ft Ground-Level Conditions</h3></div><span class="height-tag">5 FT</span></div><div class="readings-row" id="ground-readings"></div><div id="ground-status" class="result-badge"></div><p id="ground-reason" class="card-footnote"></p></article>
+      <div class="comparison-grid"><article class="station-card ground-card"><div class="card-heading"><span class="station-icon" aria-hidden="true">⌁</span><div><p class="eyebrow">THE VIEW YOU USUALLY GET</p><h3>5 ft Ground-Level Conditions</h3></div><span class="height-tag">5 FT</span></div><div class="readings-row" id="ground-readings"></div><div id="ground-status" class="result-badge"></div><p id="ground-reason" class="card-footnote"></p><div class="ground-limitations"><strong>Unobservable from 5 ft</strong><ul><li>Inversion gradients above the ground sensor</li><li>Upper-canopy wind conditions</li><li>Vertical and directional wind shear between heights</li></ul></div></article>
       <article class="station-card canopy-card"><div class="card-heading"><span class="station-icon shield-small" aria-hidden="true">✓</span><div><p class="eyebrow">THE RISK YOU WOULD HAVE MISSED</p><h3>CanopyGuard Multi-Height</h3></div><span class="height-tag">5 + 30 FT</span></div><div class="readings-row" id="canopy-readings"></div><div id="canopy-status" class="result-badge"></div><div class="delta-chips" id="delta-chips"></div></article></div>
     </section>
     <div id="canopy-view-slot"></div>
@@ -39,12 +40,12 @@
         <p id="profile-name"></p>
       </div>
       <div class="profile-controls">
-        <label class="preset-label" for="profile-preset">Screening preset
+        <label class="preset-label" for="profile-preset">Illustrative screening preset
           <select id="profile-preset" aria-label="Screening preset">
-            <option value="contact_fungicide">Standard contact fungicide</option>
-            <option value="volatile_formulation">Volatile formulation</option>
-            <option value="fine_airblast">Fine-mist airblast insecticide</option>
-            <option value="dormant_oil">Dormant horticultural oil</option>
+            <option value="contact_fungicide">Illustrative — standard contact preset</option>
+            <option value="volatile_formulation">Illustrative — volatile formulation preset</option>
+            <option value="fine_airblast">Illustrative — fine-mist preset</option>
+            <option value="dormant_oil">Illustrative — dormant oil preset</option>
             <option value="custom" disabled>Custom profile</option>
           </select>
         </label>
@@ -67,16 +68,16 @@
       </div>
       <div class="profile-help">
         <div id="effective-limits" class="profile-hint"></div>
-        <p id="profile-hint" class="profile-hint">Configurable screening thresholds; verify the actual product label.</p>
+        <p id="profile-hint" class="profile-hint">Illustrative thresholds only; they are not validated product-label limits or application clearance. Always follow the actual product label and qualified local guidance.</p>
       </div>
     </section>
     <section id="session-panel" class="session-panel" aria-labelledby="session-title"><div class="section-heading"><div><p class="eyebrow">DURING & AFTER APPLICATION</p><h2 id="session-title">Keep the last pass in view.</h2></div><span id="session-state" class="source-badge">BEFORE SPRAY</span></div><p id="session-summary">No treatment recorded.</p><div class="session-actions" id="demo-session-actions" hidden><button id="session-start" class="outline-button">Start demo session</button><button id="session-finish" class="outline-button" disabled>Finish demo session</button><button id="session-example" class="outline-button">Demo: treated 2 hrs ago</button><button id="session-reset" class="text-button">Reset demo session</button></div><p class="profile-hint" id="session-demo-disclaimer" hidden>Demo session only · A monitoring timer never replaces the product’s restricted-entry interval.</p><p class="profile-hint" id="session-production-notice" role="status" hidden>No connected treatment-session history. Forecast screening is not on-site monitoring.</p></section>
     <section class="forecast-panel" id="forecast" aria-labelledby="forecast-title"><div class="section-heading"><div><p class="eyebrow">PLAN THE NEXT PASS</p><h2 id="forecast-title">Your next 24 hours.</h2></div><span class="source-badge" id="forecast-source">FORECAST LOADING</span></div><div class="session-actions forecast-controls"><label for="weather-location">Forecast city <select id="weather-location" aria-label="Forecast city"></select></label><button id="weather-fetch" class="outline-button" type="button">Refresh NWS forecast</button></div><p id="weather-network" role="status" aria-live="polite"></p><p class="profile-hint">NWS regional forecasts are modeled at 5 ft and 30 ft. These are not measurements from an orchard sensor. Check local conditions and product labels before spraying.</p><div id="next-window" class="next-window"></div><div class="timeline-scroll"><div class="timeline-inner"><div id="timeline" class="timeline" aria-label="Forecast intervals"></div><div id="timeline-labels" class="timeline-labels"></div></div></div><div class="forecast-bottom"><div class="legend"><span><i class="GO"></i>GO</span><span><i class="CAUTION"></i>CAUTION</span><span><i class="STOP"></i>STOP</span></div><span id="forecast-zone">Pacific time · Select a period for details</span></div><div id="forecast-detail" class="forecast-detail" aria-live="polite"></div></section>
     <section class="monitor-panel"><span class="monitor-icon" aria-hidden="true">◷</span><div><h3 id="monitor-title">After the spray, keep watch.</h3><p id="monitor-risk"></p></div></section>
     <section id="audit-panel" class="session-panel" aria-labelledby="audit-title">
-      <h2 id="audit-title">Time-stamped audit log</h2><p id="audit-count" aria-live="polite"></p><p id="audit-persistence" role="status" hidden></p>
+      <h2 id="audit-title">Activity &amp; Decision Log</h2><p id="audit-count" aria-live="polite"></p><p id="audit-persistence" role="status" hidden></p>
       <div class="session-actions"><button class="outline-button" data-audit-filter="all" aria-pressed="true">All Logs</button><button class="outline-button" data-audit-filter="stop" aria-pressed="false">STOP Alerts Only</button><button class="outline-button" data-audit-filter="inversion" aria-pressed="false">Inversions Caught</button><button class="outline-button" data-audit-filter="hidden" aria-pressed="false">Hidden Risks Caught</button></div>
-      <div class="session-actions"><button id="audit-record" class="outline-button" disabled>Record Snapshot</button><button id="audit-download" class="outline-button">Export PCA Audit Log (CSV)</button><button id="audit-report" class="outline-button">Generate Printable Spray Compliance Report</button><button id="alert-test" class="outline-button" disabled>Test SMS / Push Alert</button><button id="alert-close-drawer" class="outline-button">Dismiss alert toasts</button></div>
+      <div class="session-actions"><button id="audit-record" class="outline-button" disabled>Record Snapshot</button><button id="audit-download" class="outline-button">Export Activity Log (CSV)</button><button id="audit-report" class="outline-button">Generate Printable Activity Summary</button><button id="alert-test" class="outline-button" disabled>Test SMS / Push Alert</button><button id="alert-close-drawer" class="outline-button">Dismiss alert toasts</button></div>
       <p id="audit-delivery" role="status"></p><div class="audit-table" tabindex="0" aria-label="Scrollable audit records"><table><thead><tr><th>Timestamp / Log ID</th><th>Orchard block &amp; pesticide</th><th>5 ft telemetry</th><th>30 ft telemetry</th><th>Temperature / speed / direction deltas</th><th>Decision</th><th>Trigger reasons</th><th>Single-station comparison</th></tr></thead><tbody id="audit-rows"></tbody></table></div>
       <p id="audit-limit"></p>
     </section>
