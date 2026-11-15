@@ -64,17 +64,14 @@ body{padding-bottom:130px}
 }
 .profile-panel .profile-controls {
   display:grid;
-  grid-template-columns:minmax(0,1fr) minmax(0,2fr);
+  grid-template-columns:repeat(3,minmax(0,1fr));
   gap:16px;
   align-items:start;
   min-width:0;
 }
 .profile-panel .profile-controls .selectors {
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:16px;
-  align-items:start;
-  min-width:0;
+  /* Make the two nested labels siblings in the three-column layout. */
+  display:contents;
 }
 .profile-panel .profile-controls label {
   display:flex;
@@ -128,7 +125,10 @@ body{padding-bottom:130px}
 }
 @media(max-width:980px) {
   .profile-panel .profile-controls {
-    grid-template-columns:minmax(0,1fr);
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .profile-panel .profile-controls .preset-label {
+    grid-column:1/-1;
   }
 }
 @media(max-width:600px) {
@@ -136,10 +136,11 @@ body{padding-bottom:130px}
     padding:21px;
     gap:14px;
   }
-  .profile-panel .profile-controls .selectors {
-    grid-template-columns:minmax(0,1fr);
-  }
   .profile-panel .profile-controls {
+    grid-template-columns:minmax(0,1fr);
     gap:14px;
+  }
+  .profile-panel .profile-controls .preset-label {
+    grid-column:auto;
   }
 }
