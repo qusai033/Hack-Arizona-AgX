@@ -31,6 +31,23 @@ See [docs/FRONTEND_INTEGRATION.md](docs/FRONTEND_INTEGRATION.md) for connecting 
 
 For browser adapter checks and 390px/768px layout previews, open `/__qa` on the development server and select **Run adapter checks**. The QA page is outside `frontend/` and is not included in the production build.
 
+
+## Browser regression tests
+
+The application build and Node test suite remain framework-free. The optional browser suite adds Playwright as a development dependency only.
+
+Install dependencies and the Chromium browser once:
+
+    npm ci
+    npx playwright install chromium
+
+Run the production-build browser suite:
+
+    npm run test:e2e
+
+This command builds the dashboard into dist/, starts an isolated local server for that build, runs Playwright, and stops the server after the suite. The existing /__qa adapter checks are also run as part of the suite. See [docs/BROWSER_TESTING.md](docs/BROWSER_TESTING.md) for the test matrix, network fixtures, and failure diagnostics.
+
+
 Team 4's controller and event recording are integrated into this application.
 Scenario changes advance simulation time without rewinding manual treatments,
 profile changes and manual snapshots retain distinct event IDs, and clock changes
