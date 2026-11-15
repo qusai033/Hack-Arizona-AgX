@@ -13,3 +13,26 @@
 #weather-sliders output{float:right;font-weight:700}
 #weather-sliders input{display:block;width:100%;min-height:36px;accent-color:var(--green)}
 .demo-strip .segmented{flex-wrap:wrap}
+body{padding-bottom:130px}
+#audit-panel,.judge-reveal #orchard{scroll-margin-top:20px}
+.audit-table{overflow:auto;margin-top:15px;max-height:520px}
+.audit-table table{border-collapse:collapse;width:100%;min-width:1060px;font-size:13px}
+.audit-table th,.audit-table td{padding:10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.audit-table th{position:sticky;top:0;background:var(--green-soft);z-index:1}
+.audit-table td small{display:block;margin-top:6px;overflow-wrap:anywhere;color:var(--muted)}
+.audit-table td:nth-child(7){min-width:230px}
+[data-audit-filter][aria-pressed=true],#judge-bar button[aria-pressed=true]{background:#dff4d6;color:#172f29;border-color:#83ad81}
+#judge-bar{position:fixed;bottom:0;width:100%;z-index:10;background:#183c32;color:#fff;padding:9px 18px;display:grid;gap:5px}
+#judge-bar>div{display:flex;gap:6px;overflow:auto}
+#judge-bar button{border:1px solid #8fb1a3;background:#284e42;color:white;border-radius:7px;padding:4px 10px;min-height:42px;white-space:nowrap}
+#alert-drawer{position:fixed;right:16px;bottom:130px;max-height:55vh;width:min(410px,calc(100% - 32px));overflow:auto;z-index:11;pointer-events:none}
+.alert-card{background:#203833;color:white;border:1px solid #789b90;border-radius:15px;padding:15px;margin:8px 0;box-shadow:0 4px 15px #0004}
+.alert-card strong,.alert-card small{display:block}
+.alert-card p{margin:8px 0;font-size:13px;line-height:1.45}
+.alert-card small{color:#e0ebdf}
+#alert-dialog{max-width:min(460px,92vw);border:1px solid var(--line);border-radius:12px}
+#alert-dialog::backdrop{background:#102620b0}
+.judge-ground #decision,.judge-ground #rules,.judge-ground .comparison-section,.judge-ground #orchard,.judge-ground #weather-panel,.judge-ground .profile-panel,.judge-ground #session-panel,.judge-ground #forecast,.judge-ground #audit-panel,.judge-ground .monitor-panel,.judge-ground #alert-drawer{display:none}
+.judge-reveal .canopy-card,.judge-forecast #forecast,.judge-audit #audit-panel{outline:3px solid #458565;outline-offset:3px}
+#audit-print{display:none}
+@media print{body{padding:0;background:white;color:black}.topbar,main,#judge-bar,#alert-drawer,#alert-dialog,.skip-link{display:none!important}#audit-print{display:block;font:11pt system-ui}#audit-print section{break-inside:avoid;border-top:1px solid #777;padding:6pt 0}}

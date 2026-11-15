@@ -1,3 +1,4 @@
+import { mountAudit } from './audit-ui.js';
 import { simulateWeather, loadOrchardForecast, forecastWindow } from './weather.js';
 import { assertSnapshot, assertFresh, deltas, escapeHTML as esc, signed } from './contract.js';
 import { scenario, evaluateDemo, demoForecast } from './demo.js';
@@ -13,6 +14,8 @@ const icons = { GO:'✓', CAUTION:'!', STOP:'×' };
 const ruleNames = { INVERSION_DETECTED:'Temperature inversion', UPPER_WIND_EXCEEDED:'Upper wind exceeds limit', GROUND_WIND_EXCEEDED:'Ground wind exceeds limit', DIRECTIONAL_WIND_SHEAR:'Wind direction shift', VERTICAL_WIND_SHEAR:'Vertical wind shear', GROUND_WIND_TOO_CALM:'Ground wind too calm', UPPER_WIND_TOO_CALM:'Upper wind too calm', GROUND_WIND_CAUTION:'Ground wind near limit', UPPER_WIND_CAUTION:'Upper wind near limit', GROUND_EVAPORATIVE_RISK:'Ground evaporation risk', UPPER_EVAPORATIVE_RISK:'Canopy evaporation risk', POST_SPRAY_VOLATILITY_ALERT:'Post-spray volatility alert', DATA_INVALID:'Evaluation unavailable' };
 let snapshot, mode='demo', activeScenario='trap', selectedHeight='canopy_30ft', adapter=null;
 let forecast=[], intervalMinutes=30, timeZone='America/Los_Angeles', revision=0, timer, busy=false, invalid=false;
+let audit;
+let judgeGroundOnly=false;
 let session=null, simulationMinute=0, overrides={}, weatherForecast=null, weatherRequest;
 const advanced = () => ['calm','evaporation','afternoon'].includes(activeScenario);
 function replaySimulation() {
@@ -84,6 +87,14 @@ function renderSnapshot() {
   $('monitor-title').textContent='After the spray, keep watch.';
   $('monitor-risk').textContent=e.post_spray_volatility_risk;
   renderSession();renderSensor(); controls();syncWeatherControls();
+  if(!judgeGroundOnly){
+    let recordedSession=session;
+    if(mode==='demo'&&activeScenario==='afternoon'){
+      recordedSession={state:simulationMinute<15?'SPRAYING_IN_PROGRESS':'POST_SPRAY_CURING',
+        pesticide_profile:getProfile('volatile_formulation')};
+    }
+    audit?.accept(snapshot,{source:mode,session:recordedSession});
+  }
 }
 function renderSession() {
   $('session-panel').classList.remove('has-alert');
@@ -109,13 +120,14 @@ function clearForecast(message='No forecast connected. Awaiting the team’s for
 function renderForecast() {
   const forecastZone=weatherForecast?.time_zone??timeZone;
   validateForecast(forecast,intervalMinutes);
-  const now=mode==='live'||weatherForecast?Date.now():Date.parse(snapshot.timestamp);
+  const replayForecast=document.body.classList.contains('judge-forecast') && !weatherForecast;
+  const now=replayForecast?Date.parse(forecast[0].timestamp):mode==='live'||weatherForecast?Date.now():Date.parse(snapshot.timestamp);
   const upcoming=forecast.filter(s=>Date.parse(s.timestamp)+intervalMinutes*60000>now).slice(0,Math.ceil(1440/intervalMinutes));
   if (!upcoming.length) return clearForecast('All supplied forecast periods are in the past.');
   const window=nextWindow(upcoming,intervalMinutes,now);
   $('forecast-title').textContent=`Your next ${Math.min(24,upcoming.length*intervalMinutes/60)} hours.`;
   $('forecast-source').textContent=weatherForecast?({nws:'LIVE NWS · MODELED HEIGHTS',cached_nws:'CACHED NWS · MODELED HEIGHTS',synthetic:'OFFLINE SIMULATION · NO LIVE NWS'})[weatherForecast.source]:mode==='demo'?'SIMULATED FORECAST · NOT NWS':mode==='imported'?'IMPORTED FORECAST · NOT LIVE':'CONNECTED FORECAST';
-  $('next-window').innerHTML=window?`<span class="window-icon" aria-hidden="true">◷</span><div>Next Safe Spray Window: ${formatTime(window.start,forecastZone)} – ${formatTime(window.end,forecastZone)} (${Number(window.hours.toFixed(1))} hrs)<small>${mode==='demo'&&!weatherForecast?'Illustrative GO window · ': 'Forecast GO window; recheck on-site · '}${new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',timeZone:forecastZone}).format(new Date(window.start))}</small></div>`:'No GO window in the supplied forecast. Check again before your next pass.';
+  $('next-window').innerHTML=window?`<span class="window-icon" aria-hidden="true">◷</span><div>Next Safe Spray Window: ${formatTime(window.start,forecastZone)} – ${formatTime(window.end,forecastZone)} (${Number(window.hours.toFixed(1))} hrs)<small>${replayForecast?'Bundled morning replay · ':mode==='demo'&&!weatherForecast?'Illustrative GO window · ': 'Forecast GO window; recheck on-site · '}${new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',timeZone:forecastZone}).format(new Date(window.start))}</small></div>`:'No GO window in the supplied forecast. Check again before your next pass.';
   $('timeline').innerHTML=upcoming.map((s,i)=>{const label=`${formatTime(s.timestamp,forecastZone)}: ${s.evaluation.multi_height_status}`;return `<button type="button" class="${s.evaluation.multi_height_status}" data-period="${i}" aria-label="${esc(label)}" title="${esc(label)}" aria-pressed="false"></button>`;}).join('');
   const start=Date.parse(upcoming[0].timestamp),end=Date.parse(upcoming.at(-1).timestamp)+intervalMinutes*60000;
   $('timeline-labels').innerHTML=Array.from({length:7},(_,i)=>`<span>${formatTime(start+(end-start)*i/6,forecastZone)}</span>`).join('');
@@ -129,6 +141,7 @@ function renderForecast() {
   }));
 }
 function fail(error) {
+  audit?.suspend();
   invalid=true;busy=false;
   $('decision').className='decision STOP'; $('decision-icon').textContent='!';
   $('decision-title').textContent='DATA UNAVAILABLE — DO NOT SPRAY';
@@ -187,6 +200,7 @@ async function changeProfile(preset) {
     renderForecast();return;
   }
   if(!adapter?.evaluateProfile)return;
+  audit?.suspend();
   busy=true;controls();clearForecast('Updating forecast for the selected profile…');
   // Remove the previous GO while the new combination is being evaluated.
   $('decision').className='decision CAUTION';$('decision-icon').textContent='…';
@@ -201,9 +215,9 @@ async function changeProfile(preset) {
     snapshot=structuredClone(checkProfile(result,profile));busy=false;renderSnapshot();await fetchForecast(ticket);
   } catch(error) {if(ticket===revision)fail(error);}
 }
-function useDemo(name='trap') {
+function useDemo(name='trap',resetProfile=false) {
   if(!['trap','marginal','clear','calm','evaporation','afternoon'].includes(name))throw new Error('Unknown demo scenario');
-  const previousProfile=mode==='demo'?snapshot?.pesticide_profile:undefined;
+  const previousProfile=mode==='demo'&&!resetProfile?snapshot?.pesticide_profile:undefined;
   if(mode!=='demo')session=null;
   ++revision;clearInterval(timer);adapter=null;mode='demo';activeScenario=name;busy=false;
   timeZone='America/Los_Angeles';intervalMinutes=30;
@@ -214,11 +228,13 @@ function useDemo(name='trap') {
   renderSnapshot();forecast=demoForecast(snapshot.pesticide_profile);renderForecast();
 }
 function setSnapshot(data) {
+  exitJudge();
   ++revision;clearInterval(timer);adapter=null;mode='imported';busy=false;session=null;source();
   try {snapshot=structuredClone(assertSnapshot(data));renderSnapshot();clearForecast();}
   catch(error){fail(error);throw error;}
 }
 async function connect(config) {
+  exitJudge();
   if(config?.mode!=='live'||typeof config.loadSnapshot!=='function')throw new Error('A live adapter with loadSnapshot is required.');
   const zone=config.timeZone||'America/Los_Angeles';new Intl.DateTimeFormat('en-US',{timeZone:zone});
   if(config.maxAgeMs!==undefined&&(!Number.isFinite(config.maxAgeMs)||config.maxAgeMs<=0))throw new Error('maxAgeMs must be positive.');
@@ -233,7 +249,7 @@ async function connect(config) {
     if(Date.now()-lastPoll >= (config.pollMs||30000)){lastPoll=Date.now();refresh();}
   },1000);
 }
-document.querySelectorAll('[data-scenario]').forEach(b=>b.addEventListener('click',()=>useDemo(b.dataset.scenario)));
+document.querySelectorAll('[data-scenario]').forEach(b=>b.addEventListener('click',()=>{exitJudge();useDemo(b.dataset.scenario);audit.accept(snapshot,{source:mode,session,event:'scenario selected'});}));
 document.querySelectorAll('[data-height]').forEach(b=>b.addEventListener('click',()=>{if(invalid)return;selectedHeight=b.dataset.height;renderSensor();}));
 $('volatility').addEventListener('change',()=>changeProfile());$('nozzle').addEventListener('change',()=>changeProfile());
 $('profile-preset').addEventListener('change',()=>changeProfile(getProfile($('profile-preset').value)));
@@ -322,4 +338,54 @@ $('weather-fetch').addEventListener('click',async()=>{
     $('weather-network').textContent=({nws:'NWS forecast loaded.',cached_nws:'Using recent cached NWS periods.',synthetic:'NWS unavailable. Showing a reproducible offline scenario.'})[result.source]+(result.window.warning_countdown?' '+result.window.warning_countdown+'.':'');
   }catch(error){if(!request.signal.aborted)$('weather-network').textContent=error.message;}
 });
+audit=mountAudit({zone:()=>timeZone});
+window.CanopyGuardAudit=Object.freeze({list:audit.list,setDispatcher:audit.setDispatcher});
+const judgeLabels=[
+  '0:00–0:45 · Show the ground station’s GO at 64°F and 4.8 mph.',
+  '0:45–1:30 · Reveal the canopy inversion, STOP decision, and alert.',
+  '1:30–2:15 · Show the post-spray alert and the 9:00 AM demo forecast window.',
+  '2:15–3:00 · Review the hidden risk record and download the CSV.'
+];
+function exitJudge(){
+  judgeGroundOnly=false;
+  document.body.classList.remove('judge-ground','judge-reveal','judge-forecast','judge-audit');
+  $('judge-ground').hidden=true;
+  $('judge-cue').textContent='Select a step to drive the demonstration.';
+  document.querySelectorAll('[data-judge]').forEach(button=>button.setAttribute('aria-pressed','false'));
+}
+function runJudge(step){
+  exitJudge();
+  document.querySelector(`[data-judge="${step}"]`).setAttribute('aria-pressed','true');
+  $('judge-cue').textContent=judgeLabels[step-1];
+  if(step===1){
+    judgeGroundOnly=true;
+    audit.suspend();
+    session=null;
+    useDemo('trap',true);
+    document.body.classList.add('judge-ground');
+    $('judge-ground').hidden=false;
+    $('judge-ground').scrollIntoView({block:'start'});
+  }else if(step===2){
+    document.body.classList.add('judge-reveal');
+    // Suppress the initial transition notification so the reveal produces exactly one preview.
+    judgeGroundOnly=true;
+    session=null;
+    useDemo('trap',true);
+    judgeGroundOnly=false;
+    audit.accept(snapshot,{source:'demo',event:'judge canopy reveal',forceAlert:true});
+    $('decision').scrollIntoView({block:'start'});
+  }else if(step===3){
+    document.body.classList.add('judge-forecast');
+    useDemo('afternoon',true);
+    simulationMinute=135;replaySimulation();
+    $('forecast').scrollIntoView({block:'center'});
+  }else{
+    document.body.classList.add('judge-audit');
+    audit.setFilter('hidden');
+    $('audit-panel').scrollIntoView({block:'start'});
+    audit.download();
+  }
+}
+document.querySelectorAll('[data-judge]').forEach(button=>button.addEventListener('click',()=>runJudge(Number(button.dataset.judge))));
+$('judge-exit').addEventListener('click',()=>{exitJudge();if(mode==='demo')renderSnapshot();});
 useDemo();
