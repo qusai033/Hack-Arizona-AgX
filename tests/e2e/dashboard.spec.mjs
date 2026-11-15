@@ -128,7 +128,7 @@ test('built demo preserves unique actions, idempotent events, v2 evidence, CSV c
       beforeTimestamp,
       after: rows.length,
       eventRows: rows.filter(row => row.id === action.event_id).length,
-      lastTimestamp: rows.at(-1).snapshot.timestamp
+      lastTimestamp: rows.find(row => row.id === action.event_id)?.snapshot.timestamp
     };
   });
   expect(duplicateResult.first).toBe(true);
