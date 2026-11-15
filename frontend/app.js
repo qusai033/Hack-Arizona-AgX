@@ -74,7 +74,7 @@ function renderSnapshot() {
   $('decision').className=`decision ${s}`;
   $('decision-icon').textContent=icons[s];
   $('decision-label').textContent=`${mode==='forecast'?'MODELED FORECAST SCREENING':'CANOPYGUARD RECOMMENDATION'} · ${s}`;
-  $('decision-title').textContent=titles[s];
+  $('decision-title').textContent=mode==='forecast'&&s==='GO'?'MODELED LOW RISK — VERIFY ON SITE':titles[s];
   $('headline').textContent=e.headline_reason;
   $('decision-note').textContent=mode==='forecast'?'Estimated 5 ft/30 ft conditions from regional NWS forecast. NOT measured orchard conditions. Never treat forecast GO as spray clearance.':
     `Based on both heights · ${mode==='demo'?'Demonstration only':mode==='imported'?'Imported snapshot only':'Check on-site conditions before application'}`;
