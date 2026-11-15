@@ -91,3 +91,17 @@ test('city selections use different NWS point coordinates and isolated cache key
   const chico=await loadOrchardForecast('chico',profile,{nowMs,cache:emptyCache,fetchImpl:fail});
   assert.equal(chico.source,'synthetic'); // Never display as production observations.
 });
+
+test('production HTML derives forecast options from the shared registry and requires explicit demo',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const html=await readFile(new URL('../frontend/index.html',import.meta.url),'utf8');
+  const app=await readFile(new URL('../frontend/app.js',import.meta.url),'utf8');
+  assert.match(html,/<select id="weather-location"[^>]*><\/select>/);
+  assert.ok(!html.includes('<option value="willcox">'));
+  assert.ok(app.includes('Object.entries(locations)'));
+  assert.ok(app.includes("get('mode') === 'demo'"));
+  assert.ok(app.includes('else startProductionForecast()'));
+  assert.ok(app.includes("result.source==='synthetic'&&mode!=='demo'"));
+  assert.ok(app.includes("forecastRequestId"));
+  assert.ok(app.includes('weatherForecast.location_id!==id'));
+});
