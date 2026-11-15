@@ -48,6 +48,31 @@ export interface EvaluationContext {
   maxAgeMs?: number;
   labelProhibitsInversion?: boolean;
 }
+/** Assigned once at the action boundary; recorded_at is real UTC, not simulation time. */
+export interface ActionEvent<Type extends string = string, Payload = Record<string, unknown>> {
+  event_id: string;
+  event_type: Type;
+  recorded_at: string;
+  payload: Payload;
+}
+export type DemoEvent =
+  | ActionEvent<'SCENARIO_SELECTED', {name: 'trap' | 'marginal' | 'clear' | 'calm' | 'evaporation' | 'afternoon'}>
+  | ActionEvent<'FRAME_SELECTED', {minute: number}>
+  | ActionEvent<'PROFILE_CHANGED', {profile: PesticideProfile}>
+  | ActionEvent<'READING_CHANGED', {height: 'ground_5ft' | 'canopy_30ft'; field: 'temp_f' | 'humidity_pct' | 'wind_speed_mph' | 'wind_dir_deg'; value: number}>
+  | ActionEvent<'SIMULATION_TICK' | 'OVERRIDES_RESET' | 'SESSION_STARTED' | 'SESSION_FINISHED' |
+      'SESSION_RESET' | 'SESSION_EXAMPLE' | 'MANUAL_SNAPSHOT_RECORDED'>;
+export interface AuditRecord {
+  id: string;
+  /** Optional only for legacy records. For new records this equals id. */
+  event_id?: string;
+  sequence_number?: number;
+  recorded_at: string;
+  event: string;
+  source: string;
+  session: SpraySession | null;
+  snapshot: CanopySnapshot;
+}
 /** Forecast entries are the same shared contract, one per evenly spaced interval. */
 export interface DashboardAdapter {
   mode: 'live';
