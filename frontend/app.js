@@ -367,12 +367,16 @@ async function requestOrchardForecast({showLoading=true}={}) {
   const profile=mode==='demo'?snapshot?.pesticide_profile:mode==='forecast'&&snapshot?snapshot.pesticide_profile:getProfile('contact_fungicide');
   if(showLoading) $('weather-network').textContent=`Loading NWS hourly forecast for ${locations[id].label}…`;
   if(mode==='unavailable'||mode==='forecast'){
-    mode='unavailable';
-    source();
-    // A location change invalidates both the old forecast and its screening.
-    if(showLoading) {
+    // On background refresh preserve the last usable forecast/model display.
+    // A deliberate location switch immediately removes the old city's data.
+    const switching=weatherForecast?.location_id && weatherForecast.location_id!==id;
+    if(switching||!weatherForecast){
+      mode='unavailable';
+      source();
       clearForecast('Loading NWS weather model for '+locations[id].label+'…');
       failNoObservation('Loading modeled NWS conditions for '+locations[id].label+'…');
+    } else if(showLoading){
+      $('weather-network').textContent='Refreshing NWS forecast for '+locations[id].label+'…';
     }
   }
   try {
@@ -403,8 +407,15 @@ async function requestOrchardForecast({showLoading=true}={}) {
     if(request.signal.aborted||token!==forecastRequestId)return;
     $('weather-network').textContent=`${locations[id].label}: ${error.message}`;
     if(mode!=='demo') {
-      mode='unavailable';weatherForecast=null;forecast=[];
-      failNoObservation(error.message);
+      if(!weatherForecast||weatherForecast.location_id!==id){
+        mode='unavailable';weatherForecast=null;forecast=[];
+        clearForecast('Forecast unavailable for '+locations[id].label+'.');
+        failNoObservation(error.message);
+      }else{
+        // Prior NWS-issued model remains displayed with explicit failure context.
+        mode='forecast';source();
+        $('forecast-source').textContent=locations[id].label+' · PREVIOUS NWS MODEL (REFRESH FAILED)';
+      }
     }
   }finally{
     if(weatherRequest===request)weatherRequest=null;
