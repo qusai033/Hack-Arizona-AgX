@@ -1,0 +1,544 @@
+From ace845b16c2b40ad8728dfb7f94160ca3ec644f5 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 15 Nov 2026 22:47:49 +0000
+Subject: [PATCH] Record the freshness policy decision and pin its boundaries
+ (#47)
+
+Team 1 decision: keep the implemented limits as an approved deviation from
+the handoff (observations 5 min old / 60 s ahead; NWS issuance 6 h old /
+5 min ahead; per-city cache retrieval 6 h).
+
+- frontend/freshness-policy.js is the single source; contract.js,
+  weather.js, engine/evaluate.js and app.js read from it. The displayed-
+  model expiry in app.js used its own copy of 6 h / 5 min and now calls
+  validateForecastIssuance. Values and behaviour are unchanged.
+- assertFresh rejects missing or invalid timestamps instead of letting
+  NaN pass; visible messages state the limit.
+- docs/FRESHNESS_POLICY.md: limits, rationale, the four separate times,
+  where each limit applies, and the three PR #37 spec cases that
+  intentionally differ (SPEC-FORECAST-AGE 7201 s and -7 s,
+  SPEC-FRESHNESS -6 s) with the boundaries they should move to.
+- tests/freshness-policy.test.mjs: exact boundaries, stale issuance with
+  future-valid periods, cached rechecks and coverage, missing/invalid
+  timestamps, city isolation, deterministic clocks.
+- e2e: a displayed model survives a failed refresh only until its issuance
+  passes 6 hours.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01GM9hhDcKCyyqoEnyeRVmi7
+---
+ README.md                       |   2 +
+ docs/DECISION_ENGINE.md         |   2 +-
+ docs/FRESHNESS_POLICY.md        |  62 ++++++++++++++
+ docs/FRONTEND_INTEGRATION.md    |   2 +-
+ docs/WEATHER_SIMULATION.md      |   2 +-
+ frontend/app.js                 |  18 ++--
+ frontend/contract.js            |  11 ++-
+ frontend/engine/evaluate.js     |   6 +-
+ frontend/freshness-policy.js    |  26 ++++++
+ frontend/weather.js             |  13 +--
+ tests/e2e/dashboard.spec.mjs    |  34 ++++++++
+ tests/freshness-policy.test.mjs | 145 ++++++++++++++++++++++++++++++++
+ 12 files changed, 300 insertions(+), 23 deletions(-)
+ create mode 100644 docs/FRESHNESS_POLICY.md
+ create mode 100644 frontend/freshness-policy.js
+ create mode 100644 tests/freshness-policy.test.mjs
+
+diff --git a/README.md b/README.md
+index 36c54ab..0613359 100644
+--- a/README.md
++++ b/README.md
+@@ -67,6 +67,8 @@ The engine evaluates both heights, inversion and shear, evaporation, four preset
+ 
+ See [docs/DECISION_ENGINE.md](docs/DECISION_ENGINE.md) for thresholds, science sources, limitations, label overrides, API examples, session persistence responsibilities, and wet-bulb calculations. Run `npm run benchmark` for local timings. The default site demo now uses this engine, not separate UI-only risk rules.
+ 
++Observation and forecast freshness limits (5 minutes / 60 seconds for sensors, 6 hours / 5 minutes for NWS issuance) and the approved deviation from the handoff are in [docs/FRESHNESS_POLICY.md](docs/FRESHNESS_POLICY.md).
++
+ ## Production NWS view and explicit simulation (November 2026)
+ 
+ The normal application entry point now starts in **forecast screening mode**, selecting Fresno, CA by default and requesting regional NWS hourly forecasts. It refreshes every 30 seconds and exposes the location selector even when the simulator is hidden. Supported California city IDs: `fresno`, `modesto`, `merced`, `bakersfield`, `chico`, and `yuba_city`. Both the weather model and selected city use `America/Los_Angeles` for display; city coordinates are approximate city centers, not verified orchard sensors.
+diff --git a/docs/DECISION_ENGINE.md b/docs/DECISION_ENGINE.md
+index dfb3657..bd6e8a1 100644
+--- a/docs/DECISION_ENGINE.md
++++ b/docs/DECISION_ENGINE.md
+@@ -90,7 +90,7 @@ This module has no hidden persistence or background scheduler. A caller must per
+ 
+ ## Freshness and reproducibility
+ 
+-For measured current observations use `evaluate(input, {nowMs: observedNow, maxAgeMs: 300000})`. The explicit clock makes replay and tests reproducible. Stale (>maxAgeMs) or future (>60 seconds) observations fail closed. Without `nowMs`, the core supports historic replays and future forecast evaluation and makes no freshness claim. The dashboard's live adapter separately enforces freshness. Timestamp alignment across the two heights is assumed by the current single-timestamp contract; upstream acquisition must establish that alignment.
++For measured current observations use `evaluate(input, {nowMs: observedNow, maxAgeMs: 300000})`. The explicit clock makes replay and tests reproducible. Stale (>maxAgeMs) or future (>60 seconds) observations fail closed. Without `nowMs`, the core supports historic replays and future forecast evaluation and makes no freshness claim. The dashboard's live adapter separately enforces freshness. Timestamp alignment across the two heights is assumed by the current single-timestamp contract; upstream acquisition must establish that alignment. Limits: [FRESHNESS_POLICY.md](FRESHNESS_POLICY.md).
+ 
+ ## Sources and what they support
+ 
+diff --git a/docs/FRESHNESS_POLICY.md b/docs/FRESHNESS_POLICY.md
+new file mode 100644
+index 0000000..945ae1f
+--- /dev/null
++++ b/docs/FRESHNESS_POLICY.md
+@@ -0,0 +1,62 @@
++# Freshness policy (issue #47)
++
++**Decision (Team 1, 2026-11-15): keep the implemented limits.** CanopyGuard does not adopt the handoff's tighter values (two hours / five seconds). This document records them as an **approved deviation** from the handoff. All application limits live in one file, `frontend/freshness-policy.js`, and every check reads from it.
++
++## Limits
++
++| What is checked | Time compared | Too old after | Too far ahead after | Handoff | Status |
++|---|---|---|---|---|---|
++| Current sensor observation (live adapter, connected snapshot, `evaluate()` with `nowMs`) | `snapshot.timestamp` vs evaluation clock | 5 minutes | 60 seconds | 5 min / 5 s | Age matches; future skew is an approved deviation |
++| NWS forecast issuance (fresh response, cached response, model already on screen) | `updateTime` → `generatedAt` → `updated` vs request clock | 6 hours | 5 minutes | 2 h / 5 s | Approved deviation |
++| Cached NWS response (per city) | `fetched_at` vs request clock | 6 hours* | never (any future retrieval time is rejected) | n/a | Unchanged |
++
++\* In practice a cached forecast stops being reused about **4 hours** after retrieval. The cache keeps 24 hourly periods and is only reused while at least 20 of them are still ahead. The original issuance is rechecked on every read, so whichever limit is reached first applies.
++
++Not part of this decision: the AZMET station check (`frontend/azmet.js`, 45 minutes / 5 minutes; #35, PR #41) and the weather data-quality report (`frontend/weather-data-quality.js`, configurable). Both are feed-level checks owned by #35 / PR #40. Neither changes a spray decision.
++
++## Rationale
++
++- **Observation age, 5 minutes.** This matches the handoff. It is a UI default (an adapter may set a shorter `maxAgeMs`), not a validated sampling requirement.
++- **Observation future skew, 60 seconds.** Field stations and browsers commonly drift by several seconds. A 5-second tolerance would make a correctly working station show DATA UNAVAILABLE from clock drift alone. The skew check exists to catch wrong clocks (minutes or hours off), and anything beyond 60 seconds still fails closed.
++- **Forecast issuance, 6 hours old.** NWS gridpoint forecasts are typically updated several times a day, but the update interval is **not guaranteed**. These values are project policy and do not assume an NWS publication schedule. With a 2-hour limit, a normal gap between NWS updates would empty the forecast panel. Six hours keeps it available, and an older issue still fails closed, even when the forecast's periods are still in the future.
++- **Forecast issuance, 5 minutes ahead.** This tolerates server/client clock differences without accepting a timestamp that is clearly wrong.
++- **Retained, not re-decided.** These are the values implemented in PR #24 for #8, with regression tests. Keeping them changes no operational decision behavior, which was the concern raised in the issue thread.
++
++## The four times stay separate
++
++| Time | Field | Used for |
++|---|---|---|
++| Issuance | `issued_at` (+ `issuance_source`) | The 6 h / 5 min issuance check |
++| Valid time | `snapshots[].timestamp` (each hourly period) | Which period is shown; never used for freshness |
++| Retrieval | `fetched_at` | Cache eligibility; a cache read never renews it or the issuance time |
++| Evaluation clock | explicit `nowMs` (`Date.now()` in the app) | The reference all ages are measured against |
++
++## Where the limits are applied
++
++- **Fresh NWS response:** `validateForecastIssuance` in `loadOrchardForecast`.
++- **Cached NWS response:** the same function rechecks the *original* issuance on every read, and the cache is keyed per city (`canopyguard-nws-v1-<city>`).
++- **Model already on screen** after a failed refresh: `app.js` keeps it, labelled *PREVIOUS NWS MODEL (REFRESH FAILED)*, only while `validateForecastIssuance` still accepts it. After that the decision becomes DATA UNAVAILABLE. This check previously used its own copy of the numbers.
++- **Live observations:** `assertFresh` on connect, on every refresh, and on the 1-second watchdog.
++- **Evaluator:** `evaluate()` / `evaluateSnapshot()` with an explicit `nowMs`.
++- **Imported JSON snapshots** are historical files. They are labelled as imported and are not checked against the current clock.
++- **Missing or invalid timestamps** always fail closed. They are never treated as fresh, and an invalid NWS primary field is not silently replaced by a secondary one.
++- **Visible messages** state the limit, for example "NWS forecast issuance is too old (older than 6 hours)" and "Sensor readings are stale (older than 5 minutes)". The text is generated from the policy values.
++
++The 30-second production refresh, the city list, and production's refusal to show synthetic values are unchanged.
++
++## Tests
++
++- `tests/freshness-policy.test.mjs` covers exact boundaries for every limit (at the limit passes, 1 ms past fails), stale issuance with future-valid periods, cache rechecks and coverage, missing and invalid timestamps, city isolation, and deterministic supplied clocks.
++- `tests/e2e/dashboard.spec.mjs` covers *a displayed NWS model is kept after a failed refresh only until its issuance passes the 6-hour limit*.
++
++### Specification harness (PR #37)
++
++Under this decision, three handoff cases intentionally disagree with the application:
++
++| Spec check | Handoff expectation | Approved behavior |
++|---|---|---|
++| `SPEC-FORECAST-AGE`, issuance 7,201 s old | rejected | accepted (limit 6 h) |
++| `SPEC-FORECAST-AGE`, issuance 7 s ahead | rejected | accepted (limit 5 min) |
++| `SPEC-FRESHNESS`, observation 6 s ahead | STOP | GO (limit 60 s) |
++
++Do not mark these as skipped or expected failures. When PR #37 is updated, change these cases to the approved boundaries: issuance 6 h + 1 s and 5 min + 1 s ahead, and observation 61 s ahead, each rejected. Then cite this document. `SPEC-FRESHNESS` 300 s → GO and 301 s → STOP, and `SPEC-FORECAST-REFRESH`, already match.
+diff --git a/docs/FRONTEND_INTEGRATION.md b/docs/FRONTEND_INTEGRATION.md
+index 0fef2ff..b7bee7a 100644
+--- a/docs/FRONTEND_INTEGRATION.md
++++ b/docs/FRONTEND_INTEGRATION.md
+@@ -50,7 +50,7 @@ await window.CanopyGuard.connect({
+ 
+ These endpoints are integration examples, not implemented services. Live mode consumes the connected evaluator's current and forecast evaluation fields. The built-in engine is available from `frontend/engine/index.js`; both Node backends and browser adapters may call it synchronously. The `evaluateDemo` wrapper now uses that same engine with simulated readings. `evaluateProfile` is optional; without it the selectors are disabled. Persist the chosen profile in your backend so subsequent `loadSnapshot()` calls return that same selection. The evaluator may not silently substitute a different profile.
+ 
+-Five minutes is a configurable UI freshness default, not a scientifically validated sampling requirement. In live mode, stale (> maxAgeMs), future (> 60 seconds), malformed, and unavailable snapshots suppress any previous GO, remove the old visualizer/forecast, and show **DATA UNAVAILABLE — DO NOT SPRAY**. A one-second watchdog catches aging observations even between polls. Loading a new profile suppresses the previous decision while evaluation is pending. In-flight replies from old demo selections/connections are discarded. Failed forecast fetches remove the old window without replacing a valid current decision.
++Five minutes is a configurable UI freshness default, not a scientifically validated sampling requirement. In live mode, stale (> maxAgeMs), future (> 60 seconds), malformed, and unavailable snapshots suppress any previous GO, remove the old visualizer/forecast, and show **DATA UNAVAILABLE — DO NOT SPRAY**. A one-second watchdog catches aging observations even between polls. Loading a new profile suppresses the previous decision while evaluation is pending. In-flight replies from old demo selections/connections are discarded. Failed forecast fetches remove the old window without replacing a valid current decision. See [FRESHNESS_POLICY.md](FRESHNESS_POLICY.md) for all limits and why the 60-second future tolerance is kept.
+ 
+ ## Teammate 1: forecast adapter
+ 
+diff --git a/docs/WEATHER_SIMULATION.md b/docs/WEATHER_SIMULATION.md
+index 3d2013f..60d625d 100644
+--- a/docs/WEATHER_SIMULATION.md
++++ b/docs/WEATHER_SIMULATION.md
+@@ -28,7 +28,7 @@ The orchard estimate uses solar elevation from UTC and coordinates as a heating
+ 
+ The loader distinguishes **period valid time** (`snapshots[].timestamp`), **source issuance/update time** (`issued_at`), and **retrieval time** (`fetched_at`). `validateForecastIssuance(properties, nowMs)` uses `properties.updateTime` as the authoritative source, otherwise `generatedAt`, otherwise `updated`; malformed authoritative values are rejected rather than bypassed by a lower-priority field. The chosen source property is returned as `issuance_source`.
+ 
+-The project freshness policy is **maximum 6 hours since issuance**, using an explicit real-world `nowMs` (not the demo replay clock). An issuance more than 5 minutes ahead of `nowMs` fails. A missing, malformed, future, or too-old issuance is not accepted as current even when the response contains valid future forecast periods. These thresholds are project screening limits, not guarantees of when NWS will publish a new forecast.
++The project freshness policy is **maximum 6 hours since issuance**, using an explicit real-world `nowMs` (not the demo replay clock). An issuance more than 5 minutes ahead of `nowMs` fails. A missing, malformed, future, or too-old issuance is not accepted as current even when the response contains valid future forecast periods. These thresholds are project screening limits, not guarantees of when NWS will publish a new forecast. The limits, rationale and the approved deviation from the handoff are recorded in [FRESHNESS_POLICY.md](FRESHNESS_POLICY.md) (issue #47).
+ 
+ The city-specific cache stores `issued_at`, `issuance_source`, and `fetched_at` separately. Fallback reevaluates the **original issue age** at every access; a cache read does not renew the issue time. Legacy cache entries without verifiable issuance are not eligible. A failed live NWS request uses a qualified cached NWS source when available; otherwise the service returns `source: 'synthetic'` only for the explicit local simulator. The normal production dashboard refuses synthetic fallback, shows an unavailable state, and never displays synthetic values as observations.
+ 
+diff --git a/frontend/app.js b/frontend/app.js
+index 4f597fd..bb7c18c 100644
+--- a/frontend/app.js
++++ b/frontend/app.js
+@@ -1,5 +1,6 @@
+ import { mountAudit } from './audit-ui.js';
+-import { loadOrchardForecast, forecastWindow, locations, presetTimeOfDay } from './weather.js';
++import { loadOrchardForecast, forecastWindow, locations, presetTimeOfDay, validateForecastIssuance } from './weather.js';
++import { FRESHNESS_POLICY } from './freshness-policy.js';
+ import { assertSnapshot, assertFresh, deltas, escapeHTML as esc, signed } from './contract.js';
+ import { evaluateDemo, demoForecast } from './demo.js';
+ import { reevaluateForecastModel, currentForecastPeriod } from './forecast-profile.js';
+@@ -294,7 +295,7 @@ function checkProfile(result,profile) {
+   if (JSON.stringify(result.pesticide_profile)!==JSON.stringify(profile)) {
+     for(const k of Object.keys(profile)) if(result.pesticide_profile[k]!==profile[k]) throw new Error('Evaluator returned a different pesticide profile.');
+   }
+-  if(mode==='live') assertFresh(result,Date.now(),adapter?.maxAgeMs||300000);
++  if(mode==='live') assertFresh(result,Date.now(),adapter?.maxAgeMs||FRESHNESS_POLICY.observation.maxAgeMs);
+   return result;
+ }
+ async function fetchForecast(ticket) {
+@@ -315,7 +316,7 @@ async function refresh() {
+   try {
+     const next=assertSnapshot(await adapter.loadSnapshot());
+     if(ticket!==revision)return;
+-    assertFresh(next,Date.now(),adapter.maxAgeMs||300000);
++    assertFresh(next,Date.now(),adapter.maxAgeMs||FRESHNESS_POLICY.observation.maxAgeMs);
+     snapshot=structuredClone(next);busy=false;
+     if(publishSnapshot(action))await fetchForecast(ticket);
+   } catch(error) {if(ticket===revision)fail(error);}
+@@ -400,7 +401,7 @@ async function connect(config) {
+   if(adapter!==config)return;
+   let lastPoll=Date.now();
+   timer=setInterval(()=>{
+-    if(!invalid&&snapshot)try{assertFresh(snapshot,Date.now(),adapter.maxAgeMs||300000);}catch(error){++revision;fail(error);}
++    if(!invalid&&snapshot)try{assertFresh(snapshot,Date.now(),adapter.maxAgeMs||FRESHNESS_POLICY.observation.maxAgeMs);}catch(error){++revision;fail(error);}
+     if(Date.now()-lastPoll >= (config.pollMs||30000)){lastPoll=Date.now();refresh();}
+   },1000);
+ }
+@@ -551,10 +552,11 @@ async function requestOrchardForecast({showLoading=true}={}) {
+         clearForecast('Forecast unavailable for '+locations[id].label+'.');
+         failNoObservation(error.message);
+       }else{
+-        // Do not keep showing a previously issued model after its source age expires.
+-        const issuanceMs=Date.parse(weatherForecast.issued_at);
+-        const age=Date.now()-issuanceMs;
+-        if(!Number.isFinite(issuanceMs)||age>6*3600000||age< -5*60000){
++        // Do not keep showing a previously issued model after its source age expires
++        // (same issuance limits as fresh and cached responses: docs/FRESHNESS_POLICY.md).
++        let issuanceCurrent=true;
++        try{validateForecastIssuance({[weatherForecast.issuance_source??'updateTime']:weatherForecast.issued_at},Date.now());}catch{issuanceCurrent=false;}
++        if(!issuanceCurrent){
+           mode='unavailable';weatherForecast=null;forecast=[];
+           clearForecast('Previous NWS model has expired.');
+           failNoObservation('Previous NWS issuance is stale or unverified; no current modeled forecast is available.');
+diff --git a/frontend/contract.js b/frontend/contract.js
+index 185d3a0..6655eac 100644
+--- a/frontend/contract.js
++++ b/frontend/contract.js
+@@ -1,3 +1,4 @@
++import { FRESHNESS_POLICY, describeLimit } from './freshness-policy.js';
+ export const STATUSES = ['GO', 'CAUTION', 'STOP'];
+ const fail = (path, message) => { throw new TypeError(`${path}: ${message}`); };
+ function object(value, path, keys, optional = []) {
+@@ -63,10 +64,12 @@ export function deltas(snapshot) {
+   const { ground_5ft: g, canopy_30ft: c } = snapshot.readings;
+   return { temperature: c.temp_f - g.temp_f, speed: c.wind_speed_mph - g.wind_speed_mph, direction: windDifference(g.wind_dir_deg, c.wind_dir_deg) };
+ }
+-export function assertFresh(snapshot, now = Date.now(), maxAgeMs = 300000) {
+-  const age = now - Date.parse(snapshot.timestamp);
+-  if (age > maxAgeMs) throw new Error('Sensor readings are stale. Check the station connection.');
+-  if (age < -60000) throw new Error('Sensor timestamp is in the future. Check the station clock.');
++/** Current-observation freshness (docs/FRESHNESS_POLICY.md). `now` is the explicit evaluation clock. */
++export function assertFresh(snapshot, now = Date.now(), maxAgeMs = FRESHNESS_POLICY.observation.maxAgeMs) {
++  const age = now - Date.parse(snapshot?.timestamp);
++  if (!Number.isFinite(age)) throw new Error('Sensor timestamp is missing or invalid. Check the station connection.');
++  if (age > maxAgeMs) throw new Error(`Sensor readings are stale (older than ${describeLimit(maxAgeMs)}). Check the station connection.`);
++  if (age < -FRESHNESS_POLICY.observation.maxFutureMs) throw new Error(`Sensor timestamp is in the future (more than ${describeLimit(FRESHNESS_POLICY.observation.maxFutureMs)} ahead). Check the station clock.`);
+ }
+ export const escapeHTML = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ export const signed = (n, digits = 1) => `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(digits)}`;
+diff --git a/frontend/engine/evaluate.js b/frontend/engine/evaluate.js
+index 2577183..61a2a58 100644
+--- a/frontend/engine/evaluate.js
++++ b/frontend/engine/evaluate.js
+@@ -1,4 +1,5 @@
+ import { assertWeatherInput, assertFresh, deltas, signed, STATUSES } from '../contract.js';
++import { FRESHNESS_POLICY } from '../freshness-policy.js';
+ import { thresholdsFor } from './profiles.js';
+ import { wetBulbDepression } from './wet-bulb.js';
+ import { assertSession, monitorSession } from './session.js';
+@@ -21,8 +22,9 @@ export function analyze(input,context={}) {
+     for(const k of Object.keys(context))if(!['session','nowMs','maxAgeMs','labelProhibitsInversion'].includes(k))throw new TypeError(`Unknown evaluation context field: ${k}`);
+     if(context.labelProhibitsInversion!==undefined&&typeof context.labelProhibitsInversion!=='boolean')throw new TypeError('labelProhibitsInversion must be boolean.');
+     if(context.nowMs!==undefined){
+-      if(!Number.isFinite(context.nowMs)||!Number.isFinite(context.maxAgeMs??300000)||(context.maxAgeMs??300000)<=0)throw new TypeError('Invalid freshness context.');
+-      assertFresh(input,context.nowMs,context.maxAgeMs??300000);
++      const maxAgeMs=context.maxAgeMs??FRESHNESS_POLICY.observation.maxAgeMs;
++      if(!Number.isFinite(context.nowMs)||!Number.isFinite(maxAgeMs)||maxAgeMs<=0)throw new TypeError('Invalid freshness context.');
++      assertFresh(input,context.nowMs,maxAgeMs);
+     }else if(context.maxAgeMs!==undefined)throw new TypeError('maxAgeMs requires explicit nowMs.');
+     if('session' in context)assertSession(context.session);
+     // A recorded in-progress treatment keeps its original application profile.
+diff --git a/frontend/freshness-policy.js b/frontend/freshness-policy.js
+new file mode 100644
+index 0000000..8a84c18
+--- /dev/null
++++ b/frontend/freshness-policy.js
+@@ -0,0 +1,26 @@
++// Freshness tolerances: the single source for every age / future-skew check in the application.
++// Decision record and rationale: docs/FRESHNESS_POLICY.md (issue #47, option 1: retain the implemented policy).
++// These are project policy values, not NWS publication guarantees.
++const second = 1000, minute = 60 * second, hour = 60 * minute;
++
++export const FRESHNESS_POLICY = Object.freeze({
++  /** Current sensor observations (live adapter, connected snapshots, evaluate() with an explicit nowMs). */
++  observation: Object.freeze({
++    maxAgeMs: 5 * minute,       // older -> "stale", decision suppressed (DATA UNAVAILABLE)
++    maxFutureMs: 60 * second    // further ahead of the clock -> rejected as a station clock error
++  }),
++  /** NWS forecast issuance (updateTime / generatedAt / updated), never the valid period or retrieval time. */
++  forecastIssuance: Object.freeze({
++    maxAgeMs: 6 * hour,         // older issuance -> forecast not used, even if its periods are still valid
++    maxFutureMs: 5 * minute     // issuance further ahead of the clock -> rejected
++  }),
++  /** Per-city cached NWS response: retrieval age limit. Issuance is rechecked separately on every read. */
++  forecastCache: Object.freeze({
++    maxRetrievalAgeMs: 6 * hour
++  })
++});
++
++const label = ms => ms % hour === 0 ? `${ms / hour} hour${ms === hour ? '' : 's'}`
++  : ms % minute === 0 ? `${ms / minute} minute${ms === minute ? '' : 's'}` : `${ms / second} seconds`;
++/** Human wording of a limit, used in visible messages so they always match the configured values. */
++export const describeLimit = label;
+diff --git a/frontend/weather.js b/frontend/weather.js
+index 342e283..1d86666 100644
+--- a/frontend/weather.js
++++ b/frontend/weather.js
+@@ -1,6 +1,7 @@
+ import { evaluateSnapshot, createSession, startSpray, finishSpray, getProfile } from './engine/index.js';
+ import { nextWindow, formatTime, validateForecast } from './timeline.js';
+ import { loadAzmetObservation, AZMET_HEIGHTS } from './azmet.js';
++import { FRESHNESS_POLICY, describeLimit } from './freshness-policy.js';
+ 
+ /** Stable city IDs shared by the selector, NWS fetches, cache, and audit source labels.
+  * California coordinates locate city centers, not verified orchard sensor installations.
+@@ -37,11 +38,11 @@ const anchors = {
+ };
+ export const presetNames = Object.freeze([...Object.keys(anchors), 'afternoon']);
+ const hour = 3600000;
+-/** Project policy, not a guarantee of NWS publication frequency: reject issuance
++/** Project policy, not a guarantee of NWS publication frequency (docs/FRESHNESS_POLICY.md): reject issuance
+  * older than 6 hours and timestamps more than 5 minutes ahead of the request clock.
+  */
+-export const MAX_FORECAST_ISSUANCE_AGE_MS = 6*hour;
+-const MAX_ISSUANCE_CLOCK_SKEW_MS = 5*60000;
++export const MAX_FORECAST_ISSUANCE_AGE_MS = FRESHNESS_POLICY.forecastIssuance.maxAgeMs;
++const MAX_ISSUANCE_CLOCK_SKEW_MS = FRESHNESS_POLICY.forecastIssuance.maxFutureMs;
+ const issuanceFields=['updateTime','generatedAt','updated'];
+ /** Valid time (hourly period), source issue/update time, and fetch time are distinct.
+  * Use NWS updateTime when available, then generatedAt, then updated. An invalid
+@@ -56,8 +57,8 @@ export function validateForecastIssuance(properties, nowMs, maxAgeMs=MAX_FORECAS
+   if(typeof value!=='string'||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(value)||
+      !Number.isFinite(Date.parse(value)))throw new Error('Invalid NWS forecast issuance/update timestamp');
+   const issuedMs=Date.parse(value),age=nowMs-issuedMs;
+-  if(age < -MAX_ISSUANCE_CLOCK_SKEW_MS)throw new Error('NWS forecast issuance time is in the future');
+-  if(age > maxAgeMs)throw new Error('NWS forecast issuance is too old');
++  if(age < -MAX_ISSUANCE_CLOCK_SKEW_MS)throw new Error(`NWS forecast issuance time is in the future (more than ${describeLimit(MAX_ISSUANCE_CLOCK_SKEW_MS)} ahead)`);
++  if(age > maxAgeMs)throw new Error(`NWS forecast issuance is too old (older than ${describeLimit(maxAgeMs)})`);
+   return {issued_at:new Date(issuedMs).toISOString(),issuance_source:field,issuance_age_minutes:Math.max(0,age/60000)};
+ }
+ const smooth = x => x*x*(3-2*x);
+@@ -286,7 +287,7 @@ export async function loadOrchardForecast(id, profile, {nowMs=Date.now(), fetchI
+       // Existing v1 cache entries lack issuance and are intentionally ineligible.
+       if(remaining?.length && typeof saved.fetched_at==='string' &&
+          Number.isFinite(Date.parse(saved.fetched_at)) &&
+-         Date.parse(saved.fetched_at)<=nowMs && nowMs-Date.parse(saved.fetched_at)<=6*hour &&
++         Date.parse(saved.fetched_at)<=nowMs && nowMs-Date.parse(saved.fetched_at)<=FRESHNESS_POLICY.forecastCache.maxRetrievalAgeMs &&
+          issuanceFields.includes(saved.issuance_source) &&
+          remaining.every((row,index)=>Date.parse(row.timestamp)===Date.parse(remaining[0].timestamp)+index*hour) &&
+          Date.parse(remaining[0].timestamp)<=start+hour && remaining.length>=20){
+diff --git a/tests/e2e/dashboard.spec.mjs b/tests/e2e/dashboard.spec.mjs
+index 747cde7..100f359 100644
+--- a/tests/e2e/dashboard.spec.mjs
++++ b/tests/e2e/dashboard.spec.mjs
+@@ -629,3 +629,37 @@ test('audit calendar files records by day, follows the latest record, and scopes
+   expect(blocked).toEqual([]);
+   expect(errors).toEqual([]);
+ });
++
++test('a displayed NWS model is kept after a failed refresh only until its issuance passes the 6-hour limit (#47)', async ({ page }) => {
++  const blocked = await isolateNetwork(page, ['https://api.weather.gov']);
++  const errors = captureErrors(page);
++  const startMs = Date.parse('2026-11-15T18:00:00Z');
++  await page.clock.install({ time: startMs });
++  let online = true;
++  const offline = route => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
++  await stubNws(page, {
++    points: route => online ? route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(pointResponse()) }) : offline(route),
++    // Issued 5 h 59 m 15 s before the page clock: 45 seconds inside the 6-hour issuance limit.
++    hourly: route => online ? route.fulfill({ status: 200, contentType: 'application/geo+json',
++      body: JSON.stringify(hourlyResponse({ nowMs: startMs, issuedAt: new Date(startMs - (6 * 3600 - 45) * 1000).toISOString() })) }) : offline(route)
++  });
++  const dropCache = () => page.evaluate(() => { for (const key of Object.keys(localStorage)) if (key.startsWith('canopyguard-nws-')) localStorage.removeItem(key); });
++
++  await page.goto('/');
++  await expect(page.locator('#weather-network')).toContainText('NWS model retrieved', { timeout: 20000 });
++  await expect(page.locator('#decision-title')).not.toContainText('DATA UNAVAILABLE');
++
++  // NWS goes down and no cached copy exists: the displayed model stays, labelled, while still within the limit.
++  online = false;
++  await dropCache();
++  await page.clock.runFor(30000); // issuance age 6 h − 15 s
++  await expect(page.locator('#forecast-source')).toContainText('PREVIOUS NWS MODEL (REFRESH FAILED)');
++  await expect(page.locator('#decision-title')).not.toContainText('DATA UNAVAILABLE');
++
++  await dropCache();
++  await page.clock.runFor(30000); // issuance age 6 h + 15 s
++  await expect(page.locator('#decision-title')).toContainText('DATA UNAVAILABLE');
++  await expect(page.locator('#forecast-source')).toContainText('FORECAST UNAVAILABLE');
++  expect(blocked).toEqual([]);
++  expect(errors.filter(error => !error.includes('status of 503 (Service Unavailable)'))).toEqual([]);
++});
+diff --git a/tests/freshness-policy.test.mjs b/tests/freshness-policy.test.mjs
+new file mode 100644
+index 0000000..cceafd4
+--- /dev/null
++++ b/tests/freshness-policy.test.mjs
+@@ -0,0 +1,145 @@
++// Issue #47: the retained freshness policy (docs/FRESHNESS_POLICY.md), tested at its exact boundaries.
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { FRESHNESS_POLICY } from '../frontend/freshness-policy.js';
++import { assertFresh } from '../frontend/contract.js';
++import { evaluateSnapshot, getProfile } from '../frontend/engine/index.js';
++import { loadOrchardForecast, validateForecastIssuance, MAX_FORECAST_ISSUANCE_AGE_MS } from '../frontend/weather.js';
++import { scenario } from '../frontend/demo.js';
++
++const second = 1000, minute = 60 * second, hour = 60 * minute;
++const nowMs = Date.parse('2026-11-15T18:00:00Z');
++const observedAt = offsetMs => ({ ...scenario('clear'), timestamp: new Date(nowMs - offsetMs).toISOString() });
++const issued = offsetMs => ({ updateTime: new Date(nowMs - offsetMs).toISOString() });
++
++test('the retained policy values are the documented decision', () => {
++  assert.deepEqual(JSON.parse(JSON.stringify(FRESHNESS_POLICY)), {
++    observation: { maxAgeMs: 5 * minute, maxFutureMs: 60 * second },
++    forecastIssuance: { maxAgeMs: 6 * hour, maxFutureMs: 5 * minute },
++    forecastCache: { maxRetrievalAgeMs: 6 * hour }
++  });
++  assert.equal(MAX_FORECAST_ISSUANCE_AGE_MS, FRESHNESS_POLICY.forecastIssuance.maxAgeMs);
++});
++
++test('observation age and future skew: exact boundaries', () => {
++  assert.doesNotThrow(() => assertFresh(observedAt(5 * minute), nowMs));          // 300 s: accepted
++  assert.throws(() => assertFresh(observedAt(5 * minute + 1), nowMs), /stale/);   // 300.001 s: stale
++  assert.throws(() => assertFresh(observedAt(301 * second), nowMs), /stale/);     // SPEC-FRESHNESS 301 s
++  assert.doesNotThrow(() => assertFresh(observedAt(-60 * second), nowMs));        // 60 s ahead: accepted
++  assert.throws(() => assertFresh(observedAt(-60 * second - 1), nowMs), /future/);
++  // Approved deviation from the handoff (5 s): 5 s and 6 s ahead are both accepted.
++  assert.doesNotThrow(() => assertFresh(observedAt(-5 * second), nowMs));
++  assert.doesNotThrow(() => assertFresh(observedAt(-6 * second), nowMs));
++});
++
++test('the evaluator applies the same observation limits through an explicit clock and fails closed', () => {
++  const status = offsetMs => evaluateSnapshot(observedAt(offsetMs), { nowMs }).evaluation.multi_height_status;
++  assert.equal(status(5 * minute), 'GO');
++  assert.equal(status(5 * minute + 1), 'STOP');
++  assert.equal(status(-60 * second), 'GO');
++  assert.equal(status(-60 * second - 1), 'STOP');
++  const stale = evaluateSnapshot(observedAt(5 * minute + 1), { nowMs }).evaluation;
++  assert.deepEqual(stale.triggered_rules.map(rule => rule.code), ['DATA_INVALID']);
++  assert.match(stale.triggered_rules[0].explanation, /older than 5 minutes/);
++});
++
++test('missing or invalid observation timestamps never count as fresh', () => {
++  for (const timestamp of [undefined, null, '', 'yesterday', '2026-13-45T99:00:00Z'])
++    assert.throws(() => assertFresh({ ...scenario('clear'), timestamp }, nowMs), /missing or invalid/, String(timestamp));
++});
++
++test('forecast issuance age and future skew: exact boundaries', () => {
++  assert.equal(validateForecastIssuance(issued(6 * hour), nowMs).issuance_age_minutes, 360);
++  assert.throws(() => validateForecastIssuance(issued(6 * hour + 1), nowMs), /too old \(older than 6 hours\)/);
++  assert.doesNotThrow(() => validateForecastIssuance(issued(-5 * minute), nowMs));
++  assert.throws(() => validateForecastIssuance(issued(-5 * minute - 1), nowMs), /future \(more than 5 minutes ahead\)/);
++  // Approved deviation from the handoff (2 h old / 5 s ahead): SPEC-FORECAST-AGE's 7201 s and -7 s are accepted.
++  assert.doesNotThrow(() => validateForecastIssuance(issued(7201 * second), nowMs));
++  assert.doesNotThrow(() => validateForecastIssuance(issued(-7 * second), nowMs));
++});
++
++test('missing or invalid issuance timestamps are rejected, not replaced', () => {
++  assert.throws(() => validateForecastIssuance({}, nowMs), /missing/);
++  for (const value of ['', 'yesterday', '2026-11-15', '2026-11-15 18:00:00', 1763229600000, null])
++    assert.throws(() => validateForecastIssuance({ updateTime: value }, nowMs), /Invalid/, String(value));
++  // An invalid primary field is not silently replaced by a valid secondary field.
++  assert.throws(() => validateForecastIssuance({ updateTime: 'bad', generatedAt: new Date(nowMs).toISOString() }, nowMs), /Invalid/);
++  assert.throws(() => validateForecastIssuance(issued(0), NaN), TypeError);
++});
++
++// --- Loader: fresh responses, cached data, city isolation, deterministic clocks ---
++const hourlyUrl = 'https://api.weather.gov/gridpoints/HNX/53,50/forecast/hourly';
++const periodsFrom = startMs => Array.from({ length: 24 }, (_, i) => ({
++  startTime: new Date(startMs + i * hour).toISOString(), endTime: new Date(startMs + (i + 1) * hour).toISOString(),
++  windSpeed: '5 mph', windDirection: 'NW', temperature: 72, temperatureUnit: 'F', relativeHumidity: { value: 50 }, shortForecast: 'Sunny'
++}));
++const nws = (metadata, startMs = nowMs) => async url => ({ ok: true, json: async () => url === hourlyUrl
++  ? { properties: { periods: periodsFrom(startMs), ...metadata } } : { properties: { forecastHourly: hourlyUrl } } });
++const offline = async () => { throw new Error('Offline'); };
++const memoryCache = () => { const map = new Map(); return { getItem: k => map.get(k), setItem: (k, v) => map.set(k, v), map }; };
++const profile = getProfile('contact_fungicide');
++
++test('fresh responses: stale issuance is rejected even when every period is still valid', async () => {
++  const atLimit = await loadOrchardForecast('fresno', profile, { nowMs, fetchImpl: nws(issued(6 * hour)) });
++  assert.equal(atLimit.source, 'nws');
++  const stale = await loadOrchardForecast('fresno', profile, { nowMs, fetchImpl: nws(issued(6 * hour + 1)) });
++  assert.equal(stale.source, 'synthetic');
++  assert.match(stale.error, /too old/);
++  assert.equal(stale.issued_at, null);
++  const ahead = await loadOrchardForecast('fresno', profile, { nowMs, fetchImpl: nws(issued(-5 * minute - 1)) });
++  assert.equal(ahead.source, 'synthetic');
++  assert.match(ahead.error, /future/);
++});
++
++test('issuance, valid time, retrieval time and the evaluation clock stay separate', async () => {
++  const result = await loadOrchardForecast('fresno', profile, { nowMs, fetchImpl: nws(issued(90 * minute)) });
++  assert.equal(result.issued_at, new Date(nowMs - 90 * minute).toISOString()); // source issue time
++  assert.equal(result.fetched_at, new Date(nowMs).toISOString());              // retrieval time = supplied clock
++  assert.equal(result.snapshots[0].timestamp, new Date(nowMs).toISOString());  // first valid period
++  assert.equal(result.issuance_age_minutes, 90);
++  assert.notEqual(result.issued_at, result.fetched_at);
++});
++
++test('cached data: the original issuance is rechecked on every read, a recent cache read never renews it', async () => {
++  const cache = memoryCache();
++  // Issued 5 h before the fetch; cached at nowMs.
++  const live = await loadOrchardForecast('fresno', profile, { nowMs, cache, fetchImpl: nws(issued(5 * hour)) });
++  assert.equal(live.source, 'nws');
++  const oneHourLater = await loadOrchardForecast('fresno', profile, { nowMs: nowMs + hour, cache, fetchImpl: offline });
++  assert.equal(oneHourLater.source, 'cached_nws');                 // issuance age exactly 6 h
++  assert.equal(oneHourLater.issued_at, live.issued_at);
++  assert.equal(oneHourLater.fetched_at, live.fetched_at);           // the cache read is not a new retrieval
++  const justAfter = await loadOrchardForecast('fresno', profile, { nowMs: nowMs + hour + 1, cache, fetchImpl: offline });
++  assert.equal(justAfter.source, 'synthetic');                     // issuance age 6 h + 1 ms, retrieval only 1 h old
++});
++
++test('cached data: coverage of the coming hours ends cache reuse before the 6-hour retrieval limit', async () => {
++  // The cache keeps 24 hourly rows and is reused only while >= 20 of them are still ahead,
++  // so a cached forecast stops being used about 4 hours after retrieval (issuance permitting).
++  const cache = memoryCache();
++  await loadOrchardForecast('fresno', profile, { nowMs, cache, fetchImpl: nws(issued(0)) });
++  assert.equal((await loadOrchardForecast('fresno', profile, { nowMs: nowMs + 4 * hour, cache, fetchImpl: offline })).source, 'cached_nws');
++  assert.equal((await loadOrchardForecast('fresno', profile, { nowMs: nowMs + 5 * hour, cache, fetchImpl: offline })).source, 'synthetic');
++  // A retrieval time in the future (clock moved back) is never trusted.
++  assert.equal((await loadOrchardForecast('fresno', profile, { nowMs: nowMs - 1, cache, fetchImpl: offline })).source, 'synthetic');
++});
++
++test('city isolation: one city\'s cached forecast is never served for another city', async () => {
++  const cache = memoryCache();
++  await loadOrchardForecast('fresno', profile, { nowMs, cache, fetchImpl: nws(issued(minute)) });
++  assert.equal((await loadOrchardForecast('fresno', profile, { nowMs, cache, fetchImpl: offline })).source, 'cached_nws');
++  for (const other of ['modesto', 'merced', 'bakersfield', 'chico', 'yuba_city']) {
++    const result = await loadOrchardForecast(other, profile, { nowMs, cache, fetchImpl: offline });
++    assert.equal(result.source, 'synthetic', other);
++    assert.equal(result.issued_at, null, other);
++  }
++});
++
++test('deterministic supplied clocks: same inputs and clock give the same result', async () => {
++  const run = () => loadOrchardForecast('fresno', profile, { nowMs, fetchImpl: nws(issued(2 * hour)) });
++  assert.deepEqual(await run(), await run());
++  const a = validateForecastIssuance(issued(3 * hour), nowMs), b = validateForecastIssuance(issued(3 * hour), nowMs);
++  assert.deepEqual(a, b);
++  // The decision depends only on the supplied clock, not on when the test happens to run.
++  assert.throws(() => validateForecastIssuance(issued(0), nowMs + 6 * hour + 1), /too old/);
++});
+-- 
+2.43.0
+
