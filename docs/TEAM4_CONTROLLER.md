@@ -72,8 +72,8 @@ browser wiring, identical-result profile changes, manual recording, scenario
 selection, the judge replay, and expired forecast windows. Its embedded frames
 explicitly request demo mode so QA does not depend on external NWS availability.
 
-The following remain separate work: #9 effective-configuration/version evidence,
-#15 richer alert lifecycle, #16 detailed persistence warnings, #17 complete CSV
-evidence, #18 full Reset Demo/Step controls, and #19 the portable browser-test
-harness. The current CSV remains a readable summary; adding event identity does
-not make it a complete evidence export. Forecast issuance validation remains #8.
+The follow-up [lifecycle integration](TEAM4_LIFECYCLE.md) implements #15 alert
+state, #16 recovery using #9's v2 evidence, and #18 Reset Demo/Step. The CSV includes
+the complete available v2 evidence added in #17 plus demo-run ownership. Print
+remains a summary, and #19 owns the portable browser-test harness. Forecast
+issuance validation is handled by #8.

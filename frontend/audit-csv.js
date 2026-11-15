@@ -56,7 +56,7 @@ const HEADERS = Object.freeze([
   // Complete machine-readable evidence. Historical absence is explicit, never inferred.
   'Session JSON', 'Snapshot JSON', 'Effective thresholds JSON', 'Effective profile JSON',
   'Evaluation JSON', 'Evaluation context JSON', 'Diagnostics JSON', 'Source provenance JSON',
-  'Timestamp evidence JSON', 'Audit evidence JSON'
+  'Timestamp evidence JSON', 'Audit evidence JSON', 'Demo run ID'
 ]);
 
 /** Export every record passed by the caller. The UI applies its selected filter before
@@ -138,7 +138,8 @@ export function auditCSV(records, zone) {
       jsonEvidence(evidence, 'diagnostics'),
       jsonEvidence(evidence, 'provenance'),
       jsonEvidence(evidence, 'times'),
-      evidence == null ? CSV_UNAVAILABLE : JSON.stringify(evidence)
+      evidence == null ? CSV_UNAVAILABLE : JSON.stringify(evidence),
+      unavailable(record.demo_run_id)
     ];
   });
 

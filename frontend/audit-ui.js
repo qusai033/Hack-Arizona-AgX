@@ -1,22 +1,30 @@
 import { deltas, escapeHTML as esc, signed } from './contract.js';
 import { auditCSV, createAuditLog, filterRecords, hiddenRisk, localDate, reasons, alertText } from './audit.js';
 import { assertEvent, createEvent } from './events.js';
+import {createAlertLifecycle} from './alert-state.js';
+import {AUDIT_PREFIX, persistenceWarning} from './audit-storage.js';
 
-export function mountAudit({zone=()=> 'America/Los_Angeles', onRecordSnapshot}={}) {
+export function mountAudit({zone=()=> 'America/Los_Angeles', onRecordSnapshot, logOptions={}}={}) {
   let storage;
   try {storage=window.localStorage;} catch {}
-  const log=createAuditLog(storage);
+  const log=createAuditLog(storage,logOptions);
+  const alerts=createAlertLifecycle();
   const $=id=>document.getElementById(id);
-  let current, previous, filter='all', queued, toastTimer, externalDispatch;
+  let current, filter='all', queued, toastTimer, externalDispatch;
   const table=$('audit-rows'), dialog=$('alert-dialog'), drawer=$('alert-drawer');
   function setFilter(value) {
     filter=value;
     document.querySelectorAll('[data-audit-filter]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.auditFilter===filter)));
     render();
   }
+  function showPersistence(result) {
+    $('audit-persistence').textContent=persistenceWarning(result);
+    $('audit-persistence').hidden=!result.issues.length;
+  }
   function render() {
-    const rows=filterRecords(log.list(),filter).reverse();
-    $('audit-count').textContent=`${rows.length} displayed · ${log.isPersistent()?'Saved in this browser':'Temporary storage'} · ${zone()}`;
+    const restored=log.read(), rows=filterRecords(restored.records,filter).reverse();
+    $('audit-count').textContent=`${rows.length} displayed · ${restored.persistent?'Saved in this browser':'Storage needs attention'} · ${zone()}`;
+    showPersistence(restored);
     table.replaceChildren();
     for(const row of rows.slice(0,250)){
       const s=row.snapshot,e=s.evaluation,d=deltas(s);
@@ -39,6 +47,8 @@ export function mountAudit({zone=()=> 'America/Los_Angeles', onRecordSnapshot}={
     const message=`${alert.body} Log ID ${record.id}.`;
     const card=document.createElement('article');
     card.className='alert-card';
+    card.dataset.eventId=record.id;card.dataset.source=record.source;
+    if(record.demo_run_id)card.dataset.demoRunId=record.demo_run_id;
     card.innerHTML=`<small>CANOPYGUARD · SIMULATED SMS / PUSH · ${esc(time)}</small><strong>${esc(alert.title)}</strong><p>${esc(message)}</p><small>Applicator and PCA · ${test?'Test':'Preview'}</small>`;
     drawer.prepend(card);
     while(drawer.children.length>4)drawer.lastElementChild.remove();
@@ -48,24 +58,19 @@ export function mountAudit({zone=()=> 'America/Los_Angeles', onRecordSnapshot}={
     $('alert-preview').replaceChildren(card.cloneNode(true));
     if(modal&&!dialog.open)dialog.showModal();
     if(externalDispatch && !test && record.source==='live'){
-      Promise.resolve().then(()=>externalDispatch({ ...alert, message, log_id:record.id, recipients:['Applicator','PCA'] })).catch(()=>$('audit-delivery').textContent='External alert delivery failed. The audit record was saved.');
+      Promise.resolve().then(()=>externalDispatch({ ...alert, message, event_id:record.id, log_id:record.id, recipients:['Applicator','PCA'] })).catch(()=>$('audit-delivery').textContent='External alert delivery failed. The audit record remains in this tab.');
     }
   }
-  function accept(snapshot, {source, session=null, action, forceAlert=false,
-    evaluationContext={}, provenance=null}={}) {
+  function accept(snapshot, {source, session=null, action, forceAlert=false, silentAlert=false, demo_run_id, evaluationContext={}, provenance=null}={}) {
     assertEvent(action);
     const existing = log.get(action.event_id);
     if (existing) return existing;
-    const row=log.append(snapshot,{source,session,action,evaluationContext,provenance});
-    current={snapshot:structuredClone(snapshot),source,session:structuredClone(session),
-      evaluationContext:structuredClone(evaluationContext),provenance:structuredClone(provenance)};
+    const row=log.append(snapshot,{source,session,action,demo_run_id,evaluationContext,provenance});
+    showPersistence(log.status());
+    current={snapshot:structuredClone(snapshot),source,session:structuredClone(session),demo_run_id,evaluationContext:structuredClone(evaluationContext),provenance:structuredClone(provenance)};
     $('audit-record').disabled=false;
     $('alert-test').disabled=false;
-    const e=snapshot.evaluation,post=e.triggered_rules.some(rule=>rule.code==='POST_SPRAY_VOLATILITY_ALERT');
-    const signature=JSON.stringify([source,snapshot.orchard_block,snapshot.scenario_name,e.multi_height_status,post,session?.state]);
-    const changed=previous!==signature;
-    previous=signature;
-    if((changed||forceAlert)&&e.multi_height_status!=='GO') notify(row);
+    if(alerts.accept(row,{force:forceAlert,silent:silentAlert}).notify)notify(row);
     clearTimeout(queued);
     queued=setTimeout(render,100);
     return row;
@@ -96,7 +101,11 @@ export function mountAudit({zone=()=> 'America/Los_Angeles', onRecordSnapshot}={
   $('audit-download').addEventListener('click',download);
   $('audit-report').addEventListener('click',printReport);
   $('audit-record').addEventListener('click',()=>{if(current)onRecordSnapshot?.();});
-  $('alert-close-drawer').addEventListener('click',()=>{drawer.hidden=true;});
+  $('alert-close-drawer').addEventListener('click',()=>{
+    for(const card of drawer.children)alerts.dismiss(card.dataset.eventId);
+    drawer.hidden=true;
+  });
+  dialog.addEventListener('close',()=>alerts.dismiss($('alert-preview').firstElementChild?.dataset.eventId));
   $('alert-test').addEventListener('click',()=>{
     if(current){
       const action=createEvent('NOTIFICATION_TEST');
@@ -104,10 +113,18 @@ export function mountAudit({zone=()=> 'America/Los_Angeles', onRecordSnapshot}={
       notify(row,{test:true,modal:true});render();
     }
   });
-  window.addEventListener('storage',event=>{if(event.key?.startsWith('canopyguard.audit.v1.'))render();});
+  window.addEventListener('storage',event=>{if(event.key===null||event.key?.startsWith(AUDIT_PREFIX))render();});
   render();
-  return Object.freeze({accept,download,setFilter,list:log.list,hasEvent:id=>Boolean(log.get(id)),suspend:()=>{
-    current=null;previous=null;$('audit-record').disabled=true;$('alert-test').disabled=true;
+  return Object.freeze({accept,download,setFilter,list:log.list,hasEvent:id=>Boolean(log.get(id)),resetDemoRun:runId=>{
+    clearTimeout(queued);clearTimeout(toastTimer);
+    log.resetDemoRun(runId);alerts.resetDemo(runId);
+    for(const card of [...drawer.children])if(card.dataset.source==='demo'&&card.dataset.demoRunId===runId)card.remove();
+    if(!drawer.children.length)drawer.hidden=true;
+    const preview=$('alert-preview').firstElementChild;
+    if(preview?.dataset.source==='demo'&&preview.dataset.demoRunId===runId){dialog.close();$('alert-preview').replaceChildren();}
+    current=null;setFilter('all');
+  },suspend:()=>{
+    current=null;$('audit-record').disabled=true;$('alert-test').disabled=true;
   },setDispatcher:fn=>{
     if(fn!==null&&typeof fn!=='function')throw new TypeError('Provide a dispatcher callback or null');
     externalDispatch=fn;
