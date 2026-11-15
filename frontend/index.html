@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#183c32">
+  <meta name="description" content="CanopyGuard orchard dashboard. See the weather above the trees before you spray.">
+  <title>CanopyGuard · Spray or Wait?</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#decision">Skip to spray decision</a>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="CanopyGuard home"><svg viewBox="0 0 40 44" aria-hidden="true"><path d="M20 2 37 9v15c0 10-17 18-17 18S3 34 3 24V9Z" fill="currentColor"/><path d="M20 31V13m0 10c-9 0-10-7-10-7 9-1 10 7 10 7Zm0-4s0-8 10-9c0 9-10 9-10 9Z" fill="none" stroke="#f3f6df" stroke-width="2.3" stroke-linecap="round"/></svg><span>Canopy<span class="brand-light">Guard</span><small>SEE ABOVE. SPRAY SMARTER.</small></span></a>
+    <nav aria-label="Dashboard sections"><a href="#decision" class="active">Field overview</a><a href="#orchard">Canopy view</a><a href="#forecast">Spray windows</a></nav>
+    <span class="event-label">HACK ARIZONA <b>AgX</b></span>
+  </header>
+  <main>
+    <div class="intro"><div><p class="eyebrow">YOUR ORCHARD. THE FULL PICTURE.</p><h1>Spray or wait?</h1><p id="block-name" class="block-name"></p></div><div class="source-info"><span id="source-badge" class="source-badge">◉ DEMO · SIMULATED DATA</span><span id="observation-time"></span><span id="scenario-name"></span></div></div>
+    <div class="demo-strip" id="demo-controls"><span class="demo-caption">Explore a field scenario</span><div class="segmented" role="group" aria-label="Demo scenarios"><button data-scenario="trap" aria-pressed="true">Hidden risk <span>STOP</span></button><button data-scenario="marginal" aria-pressed="false">Marginal <span>CAUTION</span></button><button data-scenario="clear" aria-pressed="false">Well-mixed <span>GO</span></button></div><button class="text-button" id="import-button">Load JSON <span aria-hidden="true">↗</span></button><input type="file" accept="application/json,.json" id="json-file" hidden></div>
+    <section id="decision" class="decision STOP" aria-labelledby="decision-title" aria-live="polite" aria-atomic="true">
+      <div class="decision-icon" id="decision-icon" aria-hidden="true">×</div><div class="decision-copy"><p class="decision-label" id="decision-label">CANOPYGUARD RECOMMENDATION · STOP</p><h2 id="decision-title">DO NOT SPRAY — HIGH DRIFT RISK</h2><p id="headline"></p><span class="decision-note" id="decision-note">Based on both sensor heights · Demonstration only</span></div>
+    </section>
+    <div id="error-message" class="error-message" role="alert" hidden></div>
+    <ul id="rules" class="rules" aria-label="Triggered risk rules"></ul>
+    <section class="comparison-section" aria-labelledby="comparison-title"><div class="section-heading"><div><p class="eyebrow">THE DIFFERENCE IS 25 FEET</p><h2 id="comparison-title">One station doesn’t tell the whole story.</h2></div><span class="section-meta">Same orchard. Same moment.</span></div>
+      <div class="comparison-grid"><article class="station-card ground-card"><div class="card-heading"><span class="station-icon" aria-hidden="true">⌁</span><div><p class="eyebrow">THE VIEW YOU USUALLY GET</p><h3>Traditional 5 ft Ground Station</h3></div><span class="height-tag">5 FT</span></div><div class="readings-row" id="ground-readings"></div><div id="ground-status" class="result-badge"></div><p id="ground-reason" class="card-footnote"></p></article>
+      <article class="station-card canopy-card"><div class="card-heading"><span class="station-icon shield-small" aria-hidden="true">✓</span><div><p class="eyebrow">THE RISK YOU WOULD HAVE MISSED</p><h3>CanopyGuard Multi-Height</h3></div><span class="height-tag">5 + 30 FT</span></div><div class="readings-row" id="canopy-readings"></div><div id="canopy-status" class="result-badge"></div><div class="delta-chips" id="delta-chips"></div></article></div>
+    </section>
+    <section id="orchard" class="orchard-panel" aria-labelledby="orchard-title"><div class="section-heading"><div><p class="eyebrow">WHAT’S HAPPENING ABOVE YOUR TREES</p><h2 id="orchard-title">The invisible, made visible.</h2></div><button id="motion-toggle" class="outline-button" aria-pressed="false">Pause animation <span aria-hidden="true">Ⅱ</span></button></div><div class="orchard-layout"><div class="diagram-wrap"><div id="orchard-svg"></div><p class="diagram-caption">Illustrative cross-section · Wind badges use compass direction · Not a plume model</p></div><aside class="sensor-inspector"><span class="eyebrow">INSPECT A SENSOR HEIGHT</span><div class="sensor-tabs" role="group" aria-label="Sensor height"><button data-height="canopy_30ft" aria-pressed="true">30 ft</button><button data-height="ground_5ft" aria-pressed="false">5 ft</button></div><h3 id="sensor-title">Above canopy</h3><dl id="sensor-details"></dl><div class="layer-note" id="layer-note"></div></aside></div></section>
+    <section class="profile-panel" aria-labelledby="profile-title"><div><p class="eyebrow">APPLICATION SETUP</p><h2 id="profile-title">Your spray. Your conditions.</h2><p id="profile-name"></p></div><div class="selectors"><label for="volatility">Pesticide volatility<select id="volatility"><option value="LOW">Low volatility</option><option value="MEDIUM">Medium volatility</option><option value="HIGH" selected>High volatility</option></select></label><label for="nozzle">Nozzle droplet size<select id="nozzle"><option value="COARSE">Coarse droplets</option><option value="MEDIUM">Medium droplets</option><option value="FINE" selected>Fine droplets</option></select></label></div><p id="profile-hint" class="profile-hint">Demo rules only. Try “Marginal” with low volatility + coarse droplets.</p></section>
+    <section class="forecast-panel" id="forecast" aria-labelledby="forecast-title"><div class="section-heading"><div><p class="eyebrow">PLAN THE NEXT PASS</p><h2 id="forecast-title">Your next 24 hours.</h2></div><span class="source-badge" id="forecast-source">SIMULATED FORECAST · NOT NWS</span></div><div id="next-window" class="next-window"></div><div class="timeline-scroll"><div class="timeline-inner"><div id="timeline" class="timeline" aria-label="Forecast intervals"></div><div id="timeline-labels" class="timeline-labels"></div></div></div><div class="forecast-bottom"><div class="legend"><span><i class="GO"></i>GO</span><span><i class="CAUTION"></i>CAUTION</span><span><i class="STOP"></i>STOP</span></div><span id="forecast-zone">Pacific time · Select a period for details</span></div><div id="forecast-detail" class="forecast-detail" aria-live="polite"></div></section>
+    <section class="monitor-panel"><span class="monitor-icon" aria-hidden="true">◷</span><div><h3 id="monitor-title">After the spray, keep watch.</h3><p id="monitor-risk"></p></div></section>
+    <footer><div class="footer-mark">CanopyGuard <span>/</span> A clearer view before every pass.</div><p>Decision-support tool only. Does not replace pesticide label requirements, on-site checks, or local regulations.</p><span class="footer-demo" id="footer-demo">Hackathon demonstration · Not validated for application decisions</span></footer>
+  </main>
+  <noscript><p class="error-message">JavaScript is required to evaluate and display data. Do not use this page for application decisions.</p></noscript>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
