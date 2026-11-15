@@ -129,12 +129,17 @@ function source() {
   $('demo-controls').hidden=mode!=='demo';
   $('weather-panel').hidden=mode!=='demo';
   $('judge-bar').hidden=mode!=='demo';
-  $('session-panel').hidden=mode!=='demo'&&!session;
   $('demo-session-actions').hidden=mode!=='demo';
   $('session-demo-disclaimer').hidden=mode!=='demo';
+  // Only demo mode currently supplies treatment sessions.
+  $('session-panel').hidden=mode!=='demo';
   $('forecast-session-notice').hidden=mode==='demo';
   $('demo-entry').hidden=mode==='demo';
   $('forecast-entry').hidden=mode!=='demo';
+  $('forecast-session-notice').textContent=mode==='forecast'||mode==='unavailable'
+    ? 'Weather forecasts do not include treatment history or post-application monitoring.'
+    : mode==='imported' ? 'Imported snapshots do not include connected treatment history or post-application monitoring.'
+    : 'Weather observations do not include treatment history or post-application monitoring.';
 }
 function readings(r) {
   return `<div><div class="reading-value">${r.temp_f.toFixed(1)}<span class="reading-unit">°F</span></div><div class="reading-label">Air temperature</div></div><div><div class="reading-value">${r.wind_speed_mph.toFixed(1)}<span class="reading-unit">mph</span></div><div class="reading-label">Wind from <span class="direction-pill">${r.wind_speed_mph===0?'Calm':esc(r.wind_dir_cardinal)}</span></div></div><div><div class="reading-value">${r.humidity_pct.toFixed(0)}<span class="reading-unit">%</span></div><div class="reading-label">Humidity</div></div>`;

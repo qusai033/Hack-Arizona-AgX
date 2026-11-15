@@ -92,6 +92,6 @@ The normal NWS forecast view is a distinct `mode='forecast'`, not a live connect
 
 This does not alter the external live adapter contract documented above. A live adapter must still provide `evaluateProfile` to enable editing a connected measurement; imported snapshots remain read-only. All model re-evaluations retain the source NWS issuance metadata and reject expired issuance. Profile changes produce audit events and are not real spray transactions.
 
-NWS and imported/live views show a **NOT CONNECTED** treatment state when no session system is provided and do not display simulated treatment buttons. The visible page-mode link starts the optional `?mode=demo` walkthrough. Demo sessions continue to use the existing deterministic controller and full treatment evidence.
+NWS and imported/live views hide the inactive treatment card and show one compact notice in the forecast section explaining that weather data does not include treatment history or post-application monitoring. This also applies while NWS is loading or unavailable. The visible page-mode link starts the optional `?mode=demo` walkthrough, which shows the full treatment card and its controls. Demo sessions continue to use the existing deterministic controller and full treatment evidence; there is no connected treatment-session integration yet.
 
 Unit tests: `tests/forecast-profile.test.mjs`. Integration tests: `tests/e2e/dashboard.spec.mjs`.
