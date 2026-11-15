@@ -1,5 +1,6 @@
 import { assertWeatherInput, assertFresh, deltas, signed, STATUSES } from '../contract.js';
 import { assessDataQuality } from './quality.js';
+import { FRESHNESS_POLICY } from '../freshness-policy.js';
 import { thresholdsFor } from './profiles.js';
 import { wetBulbDepression } from './wet-bulb.js';
 import { assertSession, monitorSession } from './session.js';
@@ -62,7 +63,8 @@ export function analyze(input,context={}) {
       throw new TypeError('evaluationTimeMs must be a finite Unix millisecond timestamp.');
     }
     if(context.nowMs!==undefined){
-      if(!Number.isFinite(context.nowMs)||!Number.isFinite(context.maxAgeMs??300000)||(context.maxAgeMs??300000)<=0)throw new TypeError('Invalid freshness context.');
+      if(!Number.isFinite(context.nowMs)||!Number.isFinite(context.maxAgeMs??FRESHNESS_POLICY.observation.maxAgeMs)||
+         (context.maxAgeMs??FRESHNESS_POLICY.observation.maxAgeMs)<=0)throw new TypeError('Invalid freshness context.');
     }else if(context.maxAgeMs!==undefined)throw new TypeError('maxAgeMs requires explicit nowMs.');
     if('session' in context)assertSession(context.session);
     // An in-progress application retains its actual applied profile.
@@ -79,7 +81,7 @@ export function analyze(input,context={}) {
     }
     // Once independently checked, enforce the full shared input contract.
     assertWeatherInput(input);
-    if(context.nowMs!==undefined)assertFresh(input,context.nowMs,context.maxAgeMs??300000);
+    if(context.nowMs!==undefined)assertFresh(input,context.nowMs,context.maxAgeMs??FRESHNESS_POLICY.observation.maxAgeMs);
     const d=deltas(input),rules=[],groundRules=[];
     const add=(code,severity,metric,explanation,ground=false)=>{
       const r=withProvenance({code,severity,metric,explanation});
