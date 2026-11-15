@@ -25,7 +25,8 @@ export function assessDataQuality(input,context={}) {
   if(context?.maxAgeMs!==undefined&&(!Number.isFinite(context.maxAgeMs)||context.maxAgeMs<=0))issues.push('INVALID_MAX_AGE');
   if(context?.maxAgeMs!==undefined&&context?.nowMs===undefined)issues.push('MISSING_FRESHNESS_CLOCK');
   const result={overall_status:'VALID',assessment:clock===null?'STRUCTURE_ONLY':'STRUCTURE_AND_AGE',
-    age_ms:age,evaluated_at:Number.isSafeInteger(context?.evaluationTimeMs)&&context.evaluationTimeMs>=0?
+    age_ms:age,evaluated_at:Number.isSafeInteger(context?.evaluationTimeMs)&&context.evaluationTimeMs>=0&&
+      Number.isFinite(new Date(context.evaluationTimeMs).getTime())?
       new Date(context.evaluationTimeMs).toISOString():null,
     issues,ground_5ft:null,canopy_30ft:null};
   for(const height of heights){
