@@ -92,6 +92,7 @@ test('CSV round-trip preserves full versioned evidence and exact source measurem
   assert.deepEqual(JSON.parse(get('Diagnostics JSON')), row.evidence.diagnostics);
   assert.deepEqual(JSON.parse(get('Source provenance JSON')), row.evidence.provenance);
   assert.deepEqual(JSON.parse(get('Timestamp evidence JSON')), row.evidence.times);
+  assert.deepEqual(JSON.parse(get('Audit evidence JSON')), row.evidence);
 });
 
 test('CSV quoting handles formula-like text, quotes, commas, newlines, and Unicode', () => {
