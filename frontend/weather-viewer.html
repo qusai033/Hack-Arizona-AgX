@@ -5,10 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Standalone Arizona weather-data viewer using clearly labeled synthetic sample records.">
   <title>Arizona Weather Data Viewer · CanopyGuard</title>
+  <meta name="theme-color" content="#0C234B">
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./weather-viewer.css">
+  <link rel="stylesheet" href="./arizona-theme.css">
   <script type="module" src="./weather-viewer-page.js"></script>
 </head>
-<body>
+<body class="weather-viewer">
+  <div class="university-bar">
+    <div class="university-bar-inner">
+      <a href="https://www.arizona.edu/" aria-label="The University of Arizona">
+        <img class="university-wordmark" src="./assets/brand/ua-wordmark-white.svg"
+          width="349" height="25" alt="The University of Arizona">
+      </a>
+      <span class="event-label">HACK ARIZONA · AGX</span>
+    </div>
+  </div>
+
   <main class="shell">
     <header class="top">
       <p class="eyebrow">STANDALONE DATA EXPLORER</p>
