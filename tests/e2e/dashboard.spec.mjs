@@ -92,7 +92,7 @@ test('runs the existing adapter regression page against the built dashboard', as
   expect(errors).toEqual([]);
 });
 
-test('built demo preserves unique actions, idempotent events, v2 evidence, CSV contents and reloads', async ({ page, testInfo }) => {
+test('built demo preserves unique actions, idempotent events, v2 evidence, CSV contents and reloads', async ({ page }, testInfo) => {
   const blocked = await isolateNetwork(page);
   const errors = captureErrors(page);
   await page.goto('/?mode=demo');
