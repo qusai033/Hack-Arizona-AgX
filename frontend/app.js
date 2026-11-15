@@ -15,7 +15,7 @@ import { mountCanopyView } from './canopy-view.js';
 
 mountCanopyView(document.getElementById('canopy-view-slot'));
 const $ = id => document.getElementById(id);
-const titles = { GO:'SAFE TO SPRAY NOW', CAUTION:'CAUTION — MARGINAL DRIFT RISK', STOP:'DO NOT SPRAY — HIGH DRIFT RISK' };
+const titles = { GO:'GO — CONFIGURED WEATHER CHECKS PASSED', CAUTION:'CAUTION — MARGINAL DRIFT RISK', STOP:'DO NOT SPRAY — HIGH DRIFT RISK' };
 const icons = { GO:'✓', CAUTION:'!', STOP:'×' };
 const ruleNames = { INVERSION_DETECTED:'Temperature inversion', UPPER_WIND_EXCEEDED:'Upper wind exceeds limit', GROUND_WIND_EXCEEDED:'Ground wind exceeds limit', DIRECTIONAL_WIND_SHEAR:'Wind direction shift', VERTICAL_WIND_SHEAR:'Vertical wind shear', GROUND_WIND_TOO_CALM:'Ground wind too calm', UPPER_WIND_TOO_CALM:'Upper wind too calm', GROUND_WIND_CAUTION:'Ground wind near limit', UPPER_WIND_CAUTION:'Upper wind near limit', GROUND_EVAPORATIVE_RISK:'Ground evaporation risk', UPPER_EVAPORATIVE_RISK:'Canopy evaporation risk', POST_SPRAY_VOLATILITY_ALERT:'Post-spray volatility alert', DATA_INVALID:'Evaluation unavailable' };
 let snapshot, mode='unavailable', activeScenario='trap', selectedHeight='canopy_30ft', adapter=null;
@@ -162,7 +162,7 @@ function renderSnapshot() {
   $('ground-readings').innerHTML=readings(snapshot.readings.ground_5ft);
   $('canopy-readings').innerHTML=readings(snapshot.readings.canopy_30ft);
   $('ground-status').className=`result-badge ${e.single_station_5ft_status}`;
-  $('ground-status').textContent=`${icons[e.single_station_5ft_status]} ${mode==='forecast'?'Modeled Ground Screening':'Ground Station Says'}: ${e.single_station_5ft_status}${mode!=='forecast'&&e.single_station_5ft_status==='GO'?' (Looks Safe)':''}`;
+  $('ground-status').textContent=`${icons[e.single_station_5ft_status]} ${mode==='forecast'?'Modeled Ground Screening':'Ground-only comparison'}: ${e.single_station_5ft_status}`;
   $('ground-reason').textContent=e.single_station_5ft_reason;
   const caught=e.caught_hidden_risk??(e.single_station_5ft_status==='GO'&&s==='STOP');
   $('canopy-status').className=`result-badge ${s}`;
@@ -170,7 +170,7 @@ function renderSnapshot() {
   $('delta-chips').innerHTML=`<span class="${d.temperature>0?'hot':''}">${signed(d.temperature)}°F ${d.temperature>0?'Inversion':'temperature difference'}</span><span>${signed(d.speed)} mph / ${Math.round(d.direction)}° Wind Shear</span>`;
   $('volatility').value=snapshot.pesticide_profile.volatility_class;
   $('nozzle').value=snapshot.pesticide_profile.nozzle_droplet_size;
-  $('profile-name').textContent=snapshot.pesticide_profile.name+(mode==='demo'?' · Generic screening preset':'');
+  $('profile-name').textContent=snapshot.pesticide_profile.name+' · Illustrative prototype preset';
   const p=snapshot.pesticide_profile;
   $('profile-preset').value=Object.entries(PROFILES).find(([,v])=>Object.keys(v).every(k=>v[k]===p[k]))?.[0]||'custom';
   try {const limits=thresholdsFor(p);
