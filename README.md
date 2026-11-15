@@ -118,3 +118,7 @@ The NWS view models both heights from regional conditions: **no field sensor dat
 ## Standalone Arizona weather viewer
 
 A separate, general-purpose sample-data viewer is available at `http://localhost:5173/weather-viewer.html` after `npm run dev`. It displays clearly labeled synthetic example records, source timestamps, coordinates, and basic data-quality checks. It is not a live weather feed, makes no interpolated estimates, and is not connected to the CanopyGuard evaluator. See [docs/ARIZONA_WEATHER_VIEWER.md](docs/ARIZONA_WEATHER_VIEWER.md).
+
+## Explicit evaluation-time evidence (Issue #46)
+
+The built-in demo controller captures an explicit `evaluationTimeMs` when it creates each evaluated snapshot; in demo mode this is the independent deterministic simulation clock. NWS forecasting and profile re-screening capture the evaluation invocation clock separately from forecast valid, issuance, and retrieval times. The application threads that exact context into version-2 audit evidence, persistence, `Evaluation UTC` CSV, and activity/print views. It never substitutes action `recorded_at` for the time supplied to the evaluator. Historical or externally evaluated records retain unknown evaluation times rather than invented timestamps. See [docs/AUDIT_EVIDENCE.md](docs/AUDIT_EVIDENCE.md) and `tests/evaluation-time.test.mjs`.
