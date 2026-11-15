@@ -1,4 +1,5 @@
 import { assertReading } from '../contract.js';
+import { FRESHNESS_POLICY } from '../freshness-policy.js';
 
 const heights=['ground_5ft','canopy_30ft'];
 const iso=value=>typeof value==='string' &&
@@ -17,7 +18,7 @@ const iso=value=>typeof value==='string' &&
 export function assessDataQuality(input,context={}) {
   const at=iso(input?.timestamp)?Date.parse(input.timestamp):null;
   const clock=Number.isFinite(context?.nowMs)?context.nowMs:null;
-  const maxAge=Number.isFinite(context?.maxAgeMs)&&context.maxAgeMs>0?context.maxAgeMs:300000;
+  const maxAge=Number.isFinite(context?.maxAgeMs)&&context.maxAgeMs>0?context.maxAgeMs:FRESHNESS_POLICY.observation.maxAgeMs;
   const age=at===null||clock===null?null:clock-at;
   const issues=[];
   if(at===null)issues.push('INVALID_OBSERVATION_TIMESTAMP');
@@ -36,7 +37,7 @@ export function assessDataQuality(input,context={}) {
     if(at===null){layer.status='INVALID';layer.issues.push('INVALID_OBSERVATION_TIMESTAMP');}
     if(layer.status==='VALID' && age!==null){
       if(age>maxAge){layer.status='STALE';layer.issues.push('OBSERVATION_STALE');}
-      else if(age < -60000){layer.status='FUTURE';layer.issues.push('OBSERVATION_IN_FUTURE');}
+      else if(age < -FRESHNESS_POLICY.observation.maxFutureMs){layer.status='FUTURE';layer.issues.push('OBSERVATION_IN_FUTURE');}
     }
     result[height]=layer;
   }
