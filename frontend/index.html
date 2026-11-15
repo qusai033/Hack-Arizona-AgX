@@ -7,6 +7,7 @@
   <title>CanopyGuard · Spray or Wait?</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./canopy-view.css">
 </head>
 <body>
   <a class="skip-link" href="#decision">Skip to spray decision</a>
@@ -30,13 +31,7 @@
       <div class="comparison-grid"><article class="station-card ground-card"><div class="card-heading"><span class="station-icon" aria-hidden="true">⌁</span><div><p class="eyebrow">THE VIEW YOU USUALLY GET</p><h3>5 ft Ground-Level Conditions</h3></div><span class="height-tag">5 FT</span></div><div class="readings-row" id="ground-readings"></div><div id="ground-status" class="result-badge"></div><p id="ground-reason" class="card-footnote"></p></article>
       <article class="station-card canopy-card"><div class="card-heading"><span class="station-icon shield-small" aria-hidden="true">✓</span><div><p class="eyebrow">THE RISK YOU WOULD HAVE MISSED</p><h3>CanopyGuard Multi-Height</h3></div><span class="height-tag">5 + 30 FT</span></div><div class="readings-row" id="canopy-readings"></div><div id="canopy-status" class="result-badge"></div><div class="delta-chips" id="delta-chips"></div></article></div>
     </section>
-    <section id="weather-panel" class="session-panel" aria-labelledby="weather-title">
-      <h2 id="weather-title">Weather simulator</h2>
-      <div class="session-actions"><button id="weather-play" class="outline-button">Play</button><button id="weather-step" class="outline-button">Step +1 minute</button><button id="demo-reset" class="outline-button">Reset Demo</button><button id="weather-reset" class="outline-button">Reset sliders</button><label>Time of day <span class="clock-end" id="weather-start"></span><input id="weather-minute" type="range" min="0" max="1440" step="1" value="0" aria-label="Scenario time of day"><span class="clock-end" id="weather-end"></span> <output id="weather-clock"></output></label></div>
-      <p>Reset Demo restarts this run and removes its demo activity. Other audit records stay.</p><div id="weather-sliders"></div>
-      <p class="profile-hint">Simulation controls are available only in explicitly enabled demo mode.</p>
-    </section>
-    <section id="orchard" class="orchard-panel" aria-labelledby="orchard-title"><div class="section-heading"><div><p class="eyebrow">WHAT’S HAPPENING ABOVE YOUR TREES</p><h2 id="orchard-title">The invisible, made visible.</h2></div><button id="motion-toggle" class="outline-button" aria-pressed="false">Pause animation <span aria-hidden="true">Ⅱ</span></button></div><div class="orchard-layout"><div class="diagram-wrap"><div id="orchard-svg"></div><p class="diagram-caption">Illustrative cross-section · Wind badges use compass direction · Not a plume model</p></div><aside class="sensor-inspector"><span class="eyebrow">INSPECT A SENSOR HEIGHT</span><div class="sensor-tabs" role="group" aria-label="Sensor height"><button data-height="canopy_30ft" aria-pressed="true">30 ft</button><button data-height="ground_5ft" aria-pressed="false">5 ft</button></div><h3 id="sensor-title">Above canopy</h3><dl id="sensor-details"></dl><div class="layer-note" id="layer-note"></div></aside></div></section>
+    <div id="canopy-view-slot"></div>
     <section class="profile-panel" aria-labelledby="profile-title">
       <div class="profile-heading">
         <p class="eyebrow">APPLICATION SETUP</p>

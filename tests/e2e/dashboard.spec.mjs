@@ -92,6 +92,49 @@ test('runs the existing adapter regression page against the built dashboard', as
   expect(errors).toEqual([]);
 });
 
+test('one canopy card connects the diagram, sensor inspector, simulator and reset controls', async ({ page }) => {
+  const blocked = await isolateNetwork(page);
+  const errors = captureErrors(page);
+  await page.goto('/?mode=demo');
+  const canopy = page.locator('#orchard');
+  await expect(canopy.locator('#orchard-svg svg')).toBeVisible();
+  await expect(canopy.locator('#weather-panel')).toBeVisible();
+  await expect(canopy.locator('#weather-clock')).toContainText('simulation clock 6:45 AM');
+  await expect(canopy.locator('#weather-start')).toHaveText('6:45 AM');
+  await expect(canopy.locator('#weather-end')).toContainText('next day');
+
+  await canopy.getByRole('button', { name: '5 ft', exact: true }).click();
+  await expect(canopy.locator('#sensor-title')).toHaveText('Inside the orchard');
+  await canopy.getByRole('button', { name: '30 ft', exact: true }).click();
+  await expect(canopy.locator('#sensor-title')).toHaveText('Above canopy');
+  await canopy.locator('[data-height-key="canopy_30ft"][data-field="temp_f"]').evaluate(slider => {
+    slider.value = '80';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect(canopy.locator('#sensor-details')).toContainText('80.0°F');
+  await expect(page.locator('#canopy-readings')).toContainText('80.0');
+  await canopy.getByRole('button', { name: 'Reset sliders', exact: true }).click();
+  await expect(canopy.locator('#sensor-details')).not.toContainText('80.0°F');
+
+  await canopy.getByRole('button', { name: 'Step +1 minute', exact: true }).click();
+  await expect(canopy.locator('#weather-clock')).toContainText('simulation clock 6:46 AM');
+  await canopy.getByRole('button', { name: 'Reset Demo', exact: true }).click();
+  await expect(canopy.locator('#weather-clock')).toContainText('simulation clock 6:45 AM');
+  expect(await page.evaluate(() => window.CanopyGuardAudit.list().map(row => row.event))).toEqual(['DEMO_INIT']);
+
+  await canopy.getByRole('button', { name: 'Pause animation' }).click();
+  await expect(canopy.locator('#motion-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await canopy.getByRole('button', { name: 'Resume animation' }).click();
+  await expect(canopy.locator('#motion-toggle')).toHaveAttribute('aria-pressed', 'false');
+  for (const width of [1280, 768, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await expect(canopy.locator('#weather-minute')).toBeVisible();
+  }
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 test('built demo preserves unique actions, idempotent events, v2 evidence, CSV contents and reloads', async ({ page }, testInfo) => {
   const blocked = await isolateNetwork(page);
   const errors = captureErrors(page);
@@ -302,14 +345,33 @@ test('four-step judge walkthrough keeps its anchored forecast and filtered audit
 test('production startup accepts a controlled fresh NWS response and exposes all six cities', async ({ page }) => {
   const blocked = await isolateNetwork(page, ['https://api.weather.gov']);
   const errors = captureErrors(page);
+  let hourlyRequests = 0;
   await stubNws(page, {
     points: route => route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(pointResponse()) }),
-    hourly: route => route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(hourlyResponse()) })
+    hourly: route => {
+      hourlyRequests++;
+      return route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(hourlyResponse()) });
+    }
   });
   await page.goto('/');
   await expect(page.locator('#weather-network')).toContainText('Fresno, CA: NWS model retrieved', { timeout: 20000 });
   await expect(page.locator('#source-badge')).toContainText('NWS FORECAST');
-  await expect(page.locator('#weather-location option')).toHaveCount(6);
+  await expect(page.locator('#orchard')).toBeVisible();
+  await expect(page.locator('#orchard #weather-panel')).toBeHidden();
+  await expect(page.locator('#weather-location')).toHaveCount(1);
+  await expect(page.locator('#weather-fetch')).toHaveCount(1);
+  await expect(page.locator('#weather-network')).toHaveCount(1);
+  await expect(page.locator('#forecast #weather-location')).toBeVisible();
+  await expect(page.locator('#forecast #weather-fetch')).toBeVisible();
+  await expect(page.locator('#weather-location option')).toHaveText([
+    'Fresno, CA', 'Modesto, CA', 'Merced, CA', 'Bakersfield, CA', 'Chico, CA', 'Yuba City, CA'
+  ]);
+  await page.getByLabel('Forecast city').selectOption('modesto');
+  await expect(page.locator('#weather-network')).toContainText('Modesto, CA: NWS model retrieved');
+  const beforeRefresh = hourlyRequests;
+  await page.getByRole('button', { name: 'Refresh NWS forecast', exact: true }).click();
+  await expect.poll(() => hourlyRequests).toBeGreaterThan(beforeRefresh);
+  await expect(page.locator('#weather-network')).toContainText('Modesto, CA: NWS model retrieved');
   await expect(page.locator('#decision-title')).not.toContainText('DATA UNAVAILABLE');
   expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
