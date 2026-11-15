@@ -1,5 +1,11 @@
 # Browser regression suite
 
+For evaluation against the final original handoff (including currently unmet
+requirements), use `npm run test:spec` and then `npm run report:spec`.
+See [Specification evaluation](SPEC_EVALUATION.md) for the baseline, coverage,
+documented changes, and how to interpret failures. The regression suite below
+continues to verify the current implemented behavior.
+
 The root application remains framework-free. This suite runs the actual built dashboard with Playwright and Chromium; it does not import the separate React/Vite scaffold or its placeholder evaluator.
 
 ## Setup and command

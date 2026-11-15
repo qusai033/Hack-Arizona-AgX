@@ -56,6 +56,25 @@ profile changes and manual snapshots retain distinct event IDs, and clock change
 refresh forecast windows. See [docs/TEAM4_CONTROLLER.md](docs/TEAM4_CONTROLLER.md)
 for the shared event boundary and judge-replay behavior.
 
+## Original-spec evaluation
+
+The final canonical handoff has a separate Playwright acceptance audit. It builds
+and loads the actual dashboard, runs the existing browser regressions, and compares
+scenario inputs/results, numeric boundaries, disclosures, clock/logging behavior,
+and forecast freshness against independently transcribed expectations.
+
+```sh
+npm run test:spec
+npm run report:spec
+```
+
+Unmet requirements produce a nonzero exit and a report; they are not marked as
+expected failures. Run the report command even when the evaluation fails.
+See [docs/SPEC_EVALUATION.md](docs/SPEC_EVALUATION.md) for requirements mapping,
+later project decisions, and coverage limits. `npm run test:spec:ui` opens the
+interactive test runner. The GitHub **Specification evaluation** workflow can also
+be run manually and retains its report on failure.
+
 ## Decision engine
 
 ```js
