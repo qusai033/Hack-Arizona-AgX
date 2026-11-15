@@ -1,0 +1,35 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>CanopyGuard browser QA</title><style>body{font:14px system-ui;background:#e8ece5;color:#183c32;margin:20px}button{padding:12px}#frames{display:flex;gap:20px;align-items:flex-start}iframe{border:1px solid #86977e;background:white;height:820px;flex-shrink:0}pre{white-space:pre-wrap}h1{font-size:21px}</style>
+<h1>Responsive and adapter QA · development only</h1><button id="run">Run adapter checks</button><pre id="results">Ready</pre><div id="frames"><iframe id="phone" title="390 px phone layout" src="/" width="390"></iframe><iframe id="tablet" title="768 px tablet layout" src="/" width="768"></iframe></div>
+<script type="module">
+import {scenario} from '/demo.js';
+const output=document.getElementById('results'),frame=document.getElementById('phone');
+const assert=(value,label)=>{if(!value)throw new Error(label);output.textContent+='PASS '+label+'\n';};
+const live=()=>({...scenario('clear'),timestamp:new Date().toISOString()});
+document.getElementById('run').onclick=async()=>{
+ output.textContent=''; const w=frame.contentWindow,d=frame.contentDocument,api=w.CanopyGuard;
+ try{
+  assert(d.documentElement.scrollWidth<=390,'390px layout has no page overflow');
+  const td=document.getElementById('tablet').contentDocument;assert(td.documentElement.scrollWidth<=768,'768px layout has no page overflow');
+  api.setSnapshot(scenario('clear'));assert(d.getElementById('volatility').disabled,'Imported snapshots disable profile evaluation');
+  try{api.setSnapshot({bad:true});}catch{}
+  assert(d.getElementById('decision-title').textContent.includes('DATA UNAVAILABLE'),'Malformed snapshot suppresses old GO');
+  assert(!d.querySelector('#orchard-svg svg'),'Malformed snapshot removes old diagram');
+  await api.connect({mode:'live',loadSnapshot:async()=>scenario('clear')});
+  assert(d.getElementById('decision-title').textContent.includes('DATA UNAVAILABLE'),'Stale live snapshot fails closed');
+  await api.connect({mode:'live',loadSnapshot:async()=>live()});
+  assert(d.getElementById('decision-title').textContent==='SAFE TO SPRAY NOW','Fresh connected snapshot renders evaluator GO');
+  let rejectEval;
+  await api.connect({mode:'live',loadSnapshot:async()=>live(),evaluateProfile:()=>new Promise((_,reject)=>{rejectEval=reject;})});
+  const selector=d.getElementById('volatility');selector.value='LOW';selector.dispatchEvent(new w.Event('change'));
+  assert(d.getElementById('decision-title').textContent.includes('UPDATING'),'Pending evaluation suppresses previous GO');
+  rejectEval(new Error('Evaluator offline'));await new Promise(r=>setTimeout(r,10));
+  assert(d.getElementById('decision-title').textContent.includes('DATA UNAVAILABLE'),'Evaluator failure fails closed');
+  let resolveSnapshot;const connecting=api.connect({mode:'live',loadSnapshot:()=>new Promise(r=>{resolveSnapshot=r;})});
+  api.useDemo('trap');resolveSnapshot(live());await connecting;
+  assert(d.getElementById('decision-title').textContent.includes('DO NOT SPRAY'),'Obsolete live reply cannot overwrite demo STOP');
+  await api.connect({mode:'live',maxAgeMs:10,loadSnapshot:async()=>live()});await new Promise(r=>setTimeout(r,1100));
+  assert(d.getElementById('decision-title').textContent.includes('DATA UNAVAILABLE'),'Watchdog suppresses aging GO between polls');
+  api.useDemo('trap');output.textContent+='ALL BROWSER CHECKS PASSED';
+ }catch(error){output.textContent+='FAIL '+error.message;api.useDemo('trap');}
+};
+</script></html>
