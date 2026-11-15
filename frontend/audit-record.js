@@ -45,7 +45,7 @@ export function buildAuditEvidence(snapshot, {
       throw new TypeError('Invalid explicit evaluationTimeMs for audit evidence.');
     }
     evaluated_at=new Date(evaluationTimeMs).toISOString();
-    if(source==='demo' && evaluated_at!==snapshot.timestamp){
+    if(source==='demo' && evaluationTimeMs!==Date.parse(snapshot.timestamp)){
       throw new Error('Demo evaluator time must match the deterministic simulation clock.');
     }
   }
