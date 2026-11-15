@@ -14,6 +14,7 @@ test('GO copy describes configured checks, not spray safety or clearance',async(
  assert.match(app,/GO — CONFIGURED WEATHER CHECKS PASSED/);
  assert.doesNotMatch(app,/SAFE TO SPRAY NOW|Looks Safe/);
  assert.match(app,/Illustrative prototype preset/);
+ assert.match(app,/Illustrative thresholds only; they are not validated product-label limits or application clearance/);
 });
 test('profiles and activity exports avoid unsupported compliance claims',async()=>{
  const html=await read('../frontend/index.html'),audit=await read('../frontend/audit-ui.js');
