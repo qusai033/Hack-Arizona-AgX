@@ -39,11 +39,20 @@ function updateProfileForecast() {
     intervalMinutes=30;forecast=demoForecast(snapshot.pesticide_profile);
   }
 }
+function auditSourceProvenance(){
+  if(mode!=='forecast'||!weatherForecast)return null;
+  return {kind:'nws_regional_modeled_heights',
+    forecast_source:weatherForecast.source,location_id:weatherForecast.location_id,
+    location_label:weatherForecast.location_label,time_zone:weatherForecast.time_zone,
+    issued_at:weatherForecast.issued_at??null,issuance_source:weatherForecast.issuance_source??null,
+    fetched_at:weatherForecast.fetched_at??null};
+}
 function publishSnapshot(action,{record=true,forceAlert=false}={}) {
   try{
     assertSnapshot(snapshot);
     renderSnapshot();
-    if(record&&!judgeGroundOnly)audit?.accept(snapshot,{source:mode,session,action,forceAlert});
+    if(record&&!judgeGroundOnly)audit?.accept(snapshot,{source:mode,session,action,forceAlert,
+      provenance:auditSourceProvenance()});
   }catch(error){fail(error);return false;}
   if(forecast.length)try{renderForecast();}catch(error){clearForecast(`Forecast unavailable: ${error.message}`);}
   return true;
