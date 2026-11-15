@@ -1,5 +1,6 @@
 import { mountAudit } from './audit-ui.js';
-import { loadOrchardForecast, forecastWindow, locations, presetTimeOfDay } from './weather.js';
+import { loadOrchardForecast, forecastWindow, locations, presetTimeOfDay, validateForecastIssuance } from './weather.js';
+import { FRESHNESS_POLICY } from './freshness-policy.js';
 import { assertSnapshot, assertFresh, deltas, escapeHTML as esc, signed } from './contract.js';
 import { evaluateDemo, demoForecast } from './demo.js';
 import { reevaluateForecastModel, currentForecastPeriod } from './forecast-profile.js';
@@ -339,7 +340,7 @@ function checkProfile(result,profile) {
   if (JSON.stringify(result.pesticide_profile)!==JSON.stringify(profile)) {
     for(const k of Object.keys(profile)) if(result.pesticide_profile[k]!==profile[k]) throw new Error('Evaluator returned a different pesticide profile.');
   }
-  if(mode==='live') assertFresh(result,Date.now(),adapter?.maxAgeMs||300000);
+  if(mode==='live') assertFresh(result,Date.now(),adapter?.maxAgeMs||FRESHNESS_POLICY.observation.maxAgeMs);
   return result;
 }
 async function fetchForecast(ticket) {
@@ -360,7 +361,7 @@ async function refresh() {
   try {
     const next=assertSnapshot(await adapter.loadSnapshot());
     if(ticket!==revision)return;
-    assertFresh(next,Date.now(),adapter.maxAgeMs||300000);
+    assertFresh(next,Date.now(),adapter.maxAgeMs||FRESHNESS_POLICY.observation.maxAgeMs);
     snapshot=structuredClone(next);busy=false;
     if(publishSnapshot(action))await fetchForecast(ticket);
   } catch(error) {if(ticket===revision)fail(error);}
@@ -445,7 +446,7 @@ async function connect(config) {
   if(adapter!==config)return;
   let lastPoll=Date.now();
   timer=setInterval(()=>{
-    if(!invalid&&snapshot)try{assertFresh(snapshot,Date.now(),adapter.maxAgeMs||300000);}catch(error){++revision;fail(error);}
+    if(!invalid&&snapshot)try{assertFresh(snapshot,Date.now(),adapter.maxAgeMs||FRESHNESS_POLICY.observation.maxAgeMs);}catch(error){++revision;fail(error);}
     if(Date.now()-lastPoll >= (config.pollMs||30000)){lastPoll=Date.now();refresh();}
   },1000);
 }
@@ -596,10 +597,10 @@ async function requestOrchardForecast({showLoading=true}={}) {
         clearForecast('Forecast unavailable for '+locations[id].label+'.');
         failNoObservation(error.message);
       }else{
-        // Do not keep showing a previously issued model after its source age expires.
-        const issuanceMs=Date.parse(weatherForecast.issued_at);
-        const age=Date.now()-issuanceMs;
-        if(!Number.isFinite(issuanceMs)||age>6*3600000||age< -5*60000){
+        // The same approved issuance policy applies to cached and displayed models.
+        let issuanceCurrent=true;
+        try{validateForecastIssuance({[weatherForecast.issuance_source??'updateTime']:weatherForecast.issued_at},Date.now());}catch{issuanceCurrent=false;}
+        if(!issuanceCurrent){
           mode='unavailable';weatherForecast=null;forecast=[];
           clearForecast('Previous NWS model has expired.');
           failNoObservation('Previous NWS issuance is stale or unverified; no current modeled forecast is available.');
