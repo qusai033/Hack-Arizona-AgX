@@ -27,7 +27,10 @@ test('judge afternoon replay stores full treatment, effective thresholds, versio
   assert.equal(typeof state.session.inversion_at_end_f,'number');
   assert.ok(state.snapshot.evaluation.triggered_rules.some(r=>r.code==='POST_SPRAY_VOLATILITY_ALERT'));
   const log=createAuditLog(storage);
-  const row=log.append(state.snapshot,{source:'demo',session:state.session,action:event});
+  // Current demo results carry the evaluator's independent simulation clock:
+  // replay must receive the original context, not infer it from action time.
+  const row=log.append(state.snapshot,{source:'demo',session:state.session,action:event,
+    evaluationContext:state.evaluationContext});
   assert.equal(row.schema_version,2);
   assert.equal(row.evidence.schema_version,2);
   assert.equal(row.evidence.engine_version,ENGINE_VERSION);
@@ -38,7 +41,7 @@ test('judge afternoon replay stores full treatment, effective thresholds, versio
   assert.equal(row.recorded_at,event.recorded_at);
   assert.equal(row.evidence.times.recorded_at,event.recorded_at);
   assert.equal(row.evidence.times.simulation_clock_at,row.snapshot.timestamp);
-  assert.equal(row.evidence.times.evaluated_at,null);
+  assert.equal(row.evidence.times.evaluated_at,state.clock_iso);
   assert.notEqual(row.recorded_at,row.snapshot.timestamp);
   assert.deepEqual(createAuditLog(storage).get(event.event_id),row);
 });
