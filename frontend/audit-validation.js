@@ -42,7 +42,7 @@ function validateEvidence(row) {
     ? new Date(context.evaluationTimeMs).toISOString() : null;
   check(t.evaluated_at === explicitEvaluationAt, 'independent evaluation time');
   if(row.source==='demo' && explicitEvaluationAt!==null) {
-    check(t.evaluated_at===t.simulation_clock_at, 'deterministic demo evaluation clock');
+    check(Date.parse(t.evaluated_at)===Date.parse(t.simulation_clock_at), 'deterministic demo evaluation clock');
   }
   check(e.provenance === null || object(e.provenance), 'source provenance');
   if (e.provenance) {
