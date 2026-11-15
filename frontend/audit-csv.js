@@ -5,6 +5,9 @@ const unavailable = value => value === undefined || value === null ? CSV_UNAVAIL
 const jsonEvidence = (evidence, key) => evidence == null || evidence[key] === undefined
   ? CSV_UNAVAILABLE
   : JSON.stringify(evidence[key]);
+const evidenceScalar = (evidence, key) => evidence == null || !Object.hasOwn(evidence, key)
+  ? CSV_UNAVAILABLE
+  : evidence[key] === null ? 'null' : evidence[key];
 const timeEvidence = (evidence, key) => {
   if (evidence == null || evidence.times === undefined || !(key in evidence.times)) return CSV_UNAVAILABLE;
   return evidence.times[key] === null ? 'null' : evidence.times[key];
@@ -53,7 +56,7 @@ const HEADERS = Object.freeze([
   // Complete machine-readable evidence. Historical absence is explicit, never inferred.
   'Session JSON', 'Snapshot JSON', 'Effective thresholds JSON', 'Effective profile JSON',
   'Evaluation JSON', 'Evaluation context JSON', 'Diagnostics JSON', 'Source provenance JSON',
-  'Timestamp evidence JSON'
+  'Timestamp evidence JSON', 'Audit evidence JSON'
 ]);
 
 /** Export every record passed by the caller. The UI applies its selected filter before
@@ -113,7 +116,7 @@ export function auditCSV(records, zone) {
       unavailable(record.sequence_number),
       unavailable(record.schema_version),
       evidence == null ? CSV_UNAVAILABLE : unavailable(evidence.evaluator_kind),
-      evidence == null ? CSV_UNAVAILABLE : unavailable(evidence.engine_version),
+      evidenceScalar(evidence, 'engine_version'),
       evidence == null ? CSV_UNAVAILABLE : unavailable(ruleConfigVersion),
       evidence == null ? CSV_UNAVAILABLE : unavailable(times?.snapshot_time_role),
       timeEvidence(evidence, 'simulation_clock_at'),
@@ -134,7 +137,8 @@ export function auditCSV(records, zone) {
       jsonEvidence(evidence, 'evaluation_context'),
       jsonEvidence(evidence, 'diagnostics'),
       jsonEvidence(evidence, 'provenance'),
-      jsonEvidence(evidence, 'times')
+      jsonEvidence(evidence, 'times'),
+      evidence == null ? CSV_UNAVAILABLE : JSON.stringify(evidence)
     ];
   });
 
