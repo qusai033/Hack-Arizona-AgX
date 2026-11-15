@@ -154,7 +154,7 @@ function renderSnapshot() {
   $('observation-time').textContent=`${mode==='demo'?'Demo observation':mode==='forecast'?'Forecast valid time':mode==='imported'?'Imported timestamp':'Observed'} · ${new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone,timeZoneName:'short'}).format(new Date(snapshot.timestamp))}`;
   $('decision').className=`decision ${s}`;
   $('decision-icon').textContent=icons[s];
-  $('decision-label').textContent=`${mode==='forecast'?'MODELED FORECAST SCREENING':'CANOPYGUARD RECOMMENDATION'} · ${s}`;
+  $('decision-label').textContent=`${mode==='forecast'?'MODELED FORECAST SCREENING':'PROTOTYPE SCREENING STATUS'} · ${s}`;
   $('decision-title').textContent=mode==='forecast'&&s==='GO'?'MODELED LOW RISK — VERIFY ON SITE':titles[s];
   $('headline').textContent=e.headline_reason;
   $('decision-note').textContent=mode==='forecast'?'Estimated 5 ft/30 ft conditions from regional NWS forecast. NOT measured orchard conditions. Never treat forecast GO as spray clearance.':
