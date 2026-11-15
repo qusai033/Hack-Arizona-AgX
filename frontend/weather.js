@@ -1,6 +1,7 @@
 import { evaluateSnapshot, createSession, startSpray, finishSpray, getProfile } from './engine/index.js';
 import { nextWindow, formatTime, validateForecast } from './timeline.js';
 import { loadAzmetObservation, AZMET_HEIGHTS } from './azmet.js';
+import { FRESHNESS_POLICY, describeLimit } from './freshness-policy.js';
 
 /** Stable city IDs shared by the selector, NWS fetches, cache, and audit source labels.
  * California coordinates locate city centers, not verified orchard sensor installations.
@@ -37,11 +38,11 @@ const anchors = {
 };
 export const presetNames = Object.freeze([...Object.keys(anchors), 'afternoon']);
 const hour = 3600000;
-/** Project policy, not a guarantee of NWS publication frequency: reject issuance
+/** Project policy, not a guarantee of NWS publication frequency (docs/FRESHNESS_POLICY.md): reject issuance
  * older than 6 hours and timestamps more than 5 minutes ahead of the request clock.
  */
-export const MAX_FORECAST_ISSUANCE_AGE_MS = 6*hour;
-const MAX_ISSUANCE_CLOCK_SKEW_MS = 5*60000;
+export const MAX_FORECAST_ISSUANCE_AGE_MS = FRESHNESS_POLICY.forecastIssuance.maxAgeMs;
+const MAX_ISSUANCE_CLOCK_SKEW_MS = FRESHNESS_POLICY.forecastIssuance.maxFutureMs;
 const issuanceFields=['updateTime','generatedAt','updated'];
 /** Valid time (hourly period), source issue/update time, and fetch time are distinct.
  * Use NWS updateTime when available, then generatedAt, then updated. An invalid
@@ -56,8 +57,8 @@ export function validateForecastIssuance(properties, nowMs, maxAgeMs=MAX_FORECAS
   if(typeof value!=='string'||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(value)||
      !Number.isFinite(Date.parse(value)))throw new Error('Invalid NWS forecast issuance/update timestamp');
   const issuedMs=Date.parse(value),age=nowMs-issuedMs;
-  if(age < -MAX_ISSUANCE_CLOCK_SKEW_MS)throw new Error('NWS forecast issuance time is in the future');
-  if(age > maxAgeMs)throw new Error('NWS forecast issuance is too old');
+  if(age < -MAX_ISSUANCE_CLOCK_SKEW_MS)throw new Error(`NWS forecast issuance time is in the future (more than ${describeLimit(MAX_ISSUANCE_CLOCK_SKEW_MS)} ahead)`);
+  if(age > maxAgeMs)throw new Error(`NWS forecast issuance is too old (older than ${describeLimit(maxAgeMs)})`);
   return {issued_at:new Date(issuedMs).toISOString(),issuance_source:field,issuance_age_minutes:Math.max(0,age/60000)};
 }
 const smooth = x => x*x*(3-2*x);
@@ -286,7 +287,7 @@ export async function loadOrchardForecast(id, profile, {nowMs=Date.now(), fetchI
       // Existing v1 cache entries lack issuance and are intentionally ineligible.
       if(remaining?.length && typeof saved.fetched_at==='string' &&
          Number.isFinite(Date.parse(saved.fetched_at)) &&
-         Date.parse(saved.fetched_at)<=nowMs && nowMs-Date.parse(saved.fetched_at)<=6*hour &&
+         Date.parse(saved.fetched_at)<=nowMs && nowMs-Date.parse(saved.fetched_at)<=FRESHNESS_POLICY.forecastCache.maxRetrievalAgeMs &&
          issuanceFields.includes(saved.issuance_source) &&
          remaining.every((row,index)=>Date.parse(row.timestamp)===Date.parse(remaining[0].timestamp)+index*hour) &&
          Date.parse(remaining[0].timestamp)<=start+hour && remaining.length>=20){

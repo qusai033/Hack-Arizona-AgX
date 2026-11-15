@@ -86,6 +86,8 @@ The engine evaluates both heights, inversion and shear, evaporation, four preset
 
 See [docs/DECISION_ENGINE.md](docs/DECISION_ENGINE.md) for thresholds, science sources, limitations, label overrides, API examples, session persistence responsibilities, and wet-bulb calculations. Run `npm run benchmark` for local timings. The default site demo now uses this engine, not separate UI-only risk rules.
 
+Observation and forecast freshness limits (5 minutes / 60 seconds for sensors, 6 hours / 5 minutes for NWS issuance) and the approved deviation from the handoff are in [docs/FRESHNESS_POLICY.md](docs/FRESHNESS_POLICY.md).
+
 ## Production NWS view and explicit simulation (November 2026)
 
 The normal application entry point now starts in **forecast screening mode**, selecting Fresno, CA by default and requesting regional NWS hourly forecasts. It refreshes every 30 seconds and exposes the location selector even when the simulator is hidden. Supported California city IDs: `fresno`, `modesto`, `merced`, `bakersfield`, `chico`, and `yuba_city`. Both the weather model and selected city use `America/Los_Angeles` for display; city coordinates are approximate city centers, not verified orchard sensors.

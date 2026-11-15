@@ -1,4 +1,5 @@
 import { assertWeatherInput, assertFresh, deltas, signed, STATUSES } from '../contract.js';
+import { FRESHNESS_POLICY } from '../freshness-policy.js';
 import { thresholdsFor } from './profiles.js';
 import { wetBulbDepression } from './wet-bulb.js';
 import { assertSession, monitorSession } from './session.js';
@@ -29,8 +30,9 @@ export function analyze(input,context={}) {
       throw new TypeError('evaluationTimeMs must be a finite Unix millisecond timestamp.');
     }
     if(context.nowMs!==undefined){
-      if(!Number.isFinite(context.nowMs)||!Number.isFinite(context.maxAgeMs??300000)||(context.maxAgeMs??300000)<=0)throw new TypeError('Invalid freshness context.');
-      assertFresh(input,context.nowMs,context.maxAgeMs??300000);
+      const maxAgeMs=context.maxAgeMs??FRESHNESS_POLICY.observation.maxAgeMs;
+      if(!Number.isFinite(context.nowMs)||!Number.isFinite(maxAgeMs)||maxAgeMs<=0)throw new TypeError('Invalid freshness context.');
+      assertFresh(input,context.nowMs,maxAgeMs);
     }else if(context.maxAgeMs!==undefined)throw new TypeError('maxAgeMs requires explicit nowMs.');
     if('session' in context)assertSession(context.session);
     // A recorded in-progress treatment keeps its original application profile.

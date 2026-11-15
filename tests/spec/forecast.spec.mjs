@@ -32,8 +32,12 @@ test('[SPEC-FORECAST-REFRESH] production loads initially and refreshes at 30 sec
   await evidence(testInfo, 'refresh', { hourlyRequests: requests(), status: await page.locator('#weather-network').textContent() });
 });
 
-for (const [ageSeconds, label] of [[7201, 'issuance older than two hours'], [-7, 'issuance more than five seconds ahead']]) {
-  test(`[SPEC-FORECAST-AGE] reject ${label} independently of valid time (§3.1.4)`, async ({ page }, testInfo) => {
+// Issuance limits are an approved deviation from the handoff (§3.1.4 allows 2 h old / 5 s ahead; the
+// application allows 6 h old / 5 min ahead). The handoff's 7201 s and -7 s cases are replaced by the
+// approved boundaries. The page clock is paused 1 s after `now`, so the effective ages are 6 h + 2 s
+// and 5 min + 1 s ahead. Decision record: docs/FRESHNESS_POLICY.md (issue #47).
+for (const [ageSeconds, label] of [[21601, 'issuance older than six hours'], [-302, 'issuance more than five minutes ahead']]) {
+  test(`[SPEC-FORECAST-AGE] reject ${label} independently of valid time (§3.1.4; limits per approved deviation #47)`, async ({ page }, testInfo) => {
     await controlledNws(page, ageSeconds);
     await page.goto('/');
     await page.waitForFunction(() => {

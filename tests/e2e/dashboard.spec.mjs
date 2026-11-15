@@ -762,3 +762,37 @@ test('production forecast keeps modeled-source warnings alongside the new config
   expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+test('a displayed NWS model is kept after a failed refresh only until its issuance passes the 6-hour limit (#47)', async ({ page }) => {
+  const blocked = await isolateNetwork(page, ['https://api.weather.gov']);
+  const errors = captureErrors(page);
+  const startMs = Date.parse('2026-11-15T18:00:00Z');
+  await page.clock.install({ time: startMs });
+  let online = true;
+  const offline = route => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+  await stubNws(page, {
+    points: route => online ? route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(pointResponse()) }) : offline(route),
+    // Issued 5 h 59 m 15 s before the page clock: 45 seconds inside the 6-hour issuance limit.
+    hourly: route => online ? route.fulfill({ status: 200, contentType: 'application/geo+json',
+      body: JSON.stringify(hourlyResponse({ nowMs: startMs, issuedAt: new Date(startMs - (6 * 3600 - 45) * 1000).toISOString() })) }) : offline(route)
+  });
+  const dropCache = () => page.evaluate(() => { for (const key of Object.keys(localStorage)) if (key.startsWith('canopyguard-nws-')) localStorage.removeItem(key); });
+
+  await page.goto('/');
+  await expect(page.locator('#weather-network')).toContainText('NWS model retrieved', { timeout: 20000 });
+  await expect(page.locator('#decision-title')).not.toContainText('DATA UNAVAILABLE');
+
+  // NWS goes down and no cached copy exists: the displayed model stays, labelled, while still within the limit.
+  online = false;
+  await dropCache();
+  await page.clock.runFor(30000); // issuance age 6 h − 15 s
+  await expect(page.locator('#forecast-source')).toContainText('PREVIOUS NWS MODEL (REFRESH FAILED)');
+  await expect(page.locator('#decision-title')).not.toContainText('DATA UNAVAILABLE');
+
+  await dropCache();
+  await page.clock.runFor(30000); // issuance age 6 h + 15 s
+  await expect(page.locator('#decision-title')).toContainText('DATA UNAVAILABLE');
+  await expect(page.locator('#forecast-source')).toContainText('FORECAST UNAVAILABLE');
+  expect(blocked).toEqual([]);
+  expect(errors.filter(error => !error.includes('status of 503 (Service Unavailable)'))).toEqual([]);
+});
