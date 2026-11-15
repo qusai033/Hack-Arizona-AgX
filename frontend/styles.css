@@ -218,3 +218,13 @@ body{padding-bottom:130px}
   .prototype-disclaimer{padding:12px 14px;font-size:12px}
   .ground-limitations{padding:11px;font-size:12px}
 }
+
+
+/* Issue #45: factual evaluator metadata, never fabricated sensor badges. */
+.decision-metadata{display:flex;flex-wrap:wrap;gap:7px;margin-top:13px;max-width:100%}
+.decision-meta-tag{display:inline-block;max-width:100%;padding:5px 9px;border:1px solid currentColor;
+  border-radius:6px;font-size:10px;font-weight:680;line-height:1.4;opacity:.95;overflow-wrap:anywhere}
+.rule-origin{display:block;margin-top:10px;padding-top:8px;border-top:1px solid var(--line);
+  color:var(--muted);font-size:10px;line-height:1.5;overflow-wrap:anywhere}
+.rule-card>p:not(.rule-metric){font-size:12px;line-height:1.6;color:var(--muted);margin:0}
+@media(max-width:760px){.decision-metadata{gap:5px}.decision-meta-tag{font-size:9px;padding:4px 7px}}
