@@ -40,7 +40,7 @@ function controls() {
 }
 function source() {
   const badges={demo:'◉ DEMO · SIMULATED DATA',live:'◉ CONNECTED SENSOR DATA',imported:'◉ IMPORTED SNAPSHOT · NOT LIVE',
-    forecast:'◉ NWS FORECAST · MODELED HEIGHTS',unavailable:'◉ CURRENT SENSOR DATA UNAVAILABLE'};
+    forecast:weatherForecast?.source==='cached_nws'?'◉ CACHED NWS · MODELED HEIGHTS':'◉ NWS FORECAST · MODELED HEIGHTS',unavailable:'◉ CURRENT SENSOR DATA UNAVAILABLE'};
   $('source-badge').textContent=badges[mode]||badges.unavailable;
   $('footer-demo').textContent=mode==='demo'?'Hackathon demonstration · Not validated for application decisions':
     mode==='forecast'?'NWS regional weather modeled at 5 ft and 30 ft · NOT orchard sensor measurements':
