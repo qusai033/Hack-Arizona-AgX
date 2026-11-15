@@ -5,8 +5,8 @@ const markup = `
 <section id="orchard" class="orchard-panel" aria-labelledby="orchard-title">
   <div class="section-heading">
     <div>
-      <p class="eyebrow">WHAT’S HAPPENING ABOVE YOUR TREES</p>
-      <h2 id="orchard-title">The invisible, made visible.</h2>
+      <p class="eyebrow">ORCHARD CROSS-SECTION</p>
+      <h2 id="orchard-title">Weather across the canopy</h2>
     </div>
     <button id="motion-toggle" class="outline-button" aria-pressed="false">
       Pause animation <span aria-hidden="true">Ⅱ</span>

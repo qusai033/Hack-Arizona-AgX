@@ -19,7 +19,8 @@ test('SPEC-DISCLOSURE: exact prototype disclaimer is visible in top notice and f
   const phrase='Decision-support prototype using simulated/regional inputs. Does not replace pesticide product labels, on-site measurements, or local regulations.';
   assert.equal(html.split(phrase).length-1,2,'disclaimer is both prominent and in the footer');
   assert.match(html,/<aside class="prototype-disclaimer" aria-label="Prototype limitations">/);
-  assert.match(html,/<footer>[^]*Decision-support prototype using simulated\/regional inputs/);
+  const footer=html.match(/<footer\b[^>]*>([^]*?)<\/footer>/)?.[1];
+  assert.ok(footer?.includes(phrase),'footer retains the complete prototype disclosure');
   assert.match(html,/Forecast heights are modeled, not orchard sensor measurements/);
   assert.match(html,/not application clearance or a safety determination/);
 });
