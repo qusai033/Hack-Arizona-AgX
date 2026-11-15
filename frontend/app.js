@@ -402,7 +402,7 @@ async function requestOrchardForecast({showLoading=true}={}) {
       renderSnapshot();
     }
     renderForecast();
-    $('weather-network').textContent=`${result.location_label}: ${result.source==='nws'?'NWS model retrieved':result.source==='cached_nws'?'Using previously cached NWS model (not current observations)':'OFFLINE DEMO simulation'}. ${result.fetched_at?'Retrieved '+new Intl.DateTimeFormat('en-US',{dateStyle:'short',timeStyle:'short',timeZone:result.time_zone}).format(new Date(result.fetched_at))+' local.':''} ${result.error?'Network: '+result.error:''}`;
+    $('weather-network').textContent=`${result.location_label}: ${result.source==='nws'?'NWS model retrieved':result.source==='cached_nws'?'Using previously cached NWS model (not current observations)':'OFFLINE DEMO simulation'}. ${result.issued_at?'NWS '+result.issuance_source+' '+new Intl.DateTimeFormat('en-US',{dateStyle:'short',timeStyle:'short',timeZone:result.time_zone}).format(new Date(result.issued_at))+' local ('+Math.round(result.issuance_age_minutes)+' min old).':''} ${result.fetched_at?'Retrieved '+new Intl.DateTimeFormat('en-US',{dateStyle:'short',timeStyle:'short',timeZone:result.time_zone}).format(new Date(result.fetched_at))+' local.':''} ${result.error?'Network: '+result.error:''}`;
   }catch(error){
     if(request.signal.aborted||token!==forecastRequestId)return;
     $('weather-network').textContent=`${locations[id].label}: ${error.message}`;
@@ -412,9 +412,18 @@ async function requestOrchardForecast({showLoading=true}={}) {
         clearForecast('Forecast unavailable for '+locations[id].label+'.');
         failNoObservation(error.message);
       }else{
-        // Prior NWS-issued model remains displayed with explicit failure context.
-        mode='forecast';source();
-        $('forecast-source').textContent=locations[id].label+' · PREVIOUS NWS MODEL (REFRESH FAILED)';
+        // Preserve only a prior model whose ORIGINAL NWS issuance still satisfies
+        // the freshness policy, even when a refresh or network request fails.
+        const issuanceMs=Date.parse(weatherForecast.issued_at);
+        const age=Date.now()-issuanceMs;
+        if(!Number.isFinite(issuanceMs)||age>6*3600000||age< -5*60000){
+          mode='unavailable';weatherForecast=null;forecast=[];
+          clearForecast('Previous NWS model has expired.');
+          failNoObservation('Previous NWS issuance is stale or unverified; no current modeled forecast is available.');
+        }else{
+          mode='forecast';source();
+          $('forecast-source').textContent=locations[id].label+' · PREVIOUS NWS MODEL (REFRESH FAILED)';
+        }
       }
     }
   }finally{
