@@ -90,7 +90,7 @@ This module has no hidden persistence or background scheduler. A caller must per
 
 ## Freshness and reproducibility
 
-For measured current observations use `evaluate(input, {nowMs: observedNow, maxAgeMs: 300000})`. The explicit clock makes replay and tests reproducible. Stale (>maxAgeMs) or future (>60 seconds) observations fail closed. Without `nowMs`, the core supports historic replays and future forecast evaluation and makes no freshness claim. The dashboard's live adapter separately enforces freshness. Timestamp alignment across the two heights is assumed by the current single-timestamp contract; upstream acquisition must establish that alignment.
+For measured current observations use `evaluate(input, {nowMs: observedNow, maxAgeMs: 300000})`. The explicit clock makes replay and tests reproducible. Stale (>maxAgeMs) or future (>60 seconds) observations fail closed. Without `nowMs`, the core supports historic replays and future forecast evaluation and makes no freshness claim. The dashboard's live adapter separately enforces freshness. Timestamp alignment across the two heights is assumed by the current single-timestamp contract; upstream acquisition must establish that alignment. Limits: [FRESHNESS_POLICY.md](FRESHNESS_POLICY.md).
 
 ## Sources and what they support
 

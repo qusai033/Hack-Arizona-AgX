@@ -70,8 +70,11 @@ for (const boundary of boundaries) {
   });
 }
 
-for (const [ageSeconds, expected] of [[300, 'GO'], [301, 'STOP'], [-5, 'GO'], [-6, 'STOP']]) {
-  test(`[SPEC-FRESHNESS] observation age ${ageSeconds}s yields ${expected} (§3.1.2)`, async ({ page }, testInfo) => {
+// Future skew is an approved deviation from the handoff (§3.1.2 allows 5 s ahead; the application
+// allows 60 s). The handoff's -6 s → STOP case is therefore replaced by the approved boundary,
+// -60 s → GO and -61 s → STOP. Decision record: docs/FRESHNESS_POLICY.md (issue #47).
+for (const [ageSeconds, expected] of [[300, 'GO'], [301, 'STOP'], [-5, 'GO'], [-60, 'GO'], [-61, 'STOP']]) {
+  test(`[SPEC-FRESHNESS] observation age ${ageSeconds}s yields ${expected} (§3.1.2; future skew per approved deviation #47)`, async ({ page }, testInfo) => {
     const actual = await probe(page, normal(), { ageSeconds });
     await evidence(testInfo, 'explicit-clock-freshness', actual);
     expect(actual.evaluation.multi_height_status).toBe(expected);
