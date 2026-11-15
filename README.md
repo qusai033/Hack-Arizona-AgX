@@ -32,6 +32,8 @@ See [docs/FRONTEND_INTEGRATION.md](docs/FRONTEND_INTEGRATION.md) for connecting 
 For browser adapter checks and 390px/768px layout previews, open `/__qa` on the development server and select **Run adapter checks**. The QA page is outside `frontend/` and is not included in the production build.
 
 Team 4's controller and event recording are integrated into this application.
+The [lifecycle ports](docs/TEAM4_LIFECYCLE.md) add alert dismissal/recurrence,
+visible storage recovery, and demo-scoped Reset/Step controls using v2 evidence.
 Scenario changes advance simulation time without rewinding manual treatments,
 profile changes and manual snapshots retain distinct event IDs, and clock changes
 refresh forecast windows. See [docs/TEAM4_CONTROLLER.md](docs/TEAM4_CONTROLLER.md)

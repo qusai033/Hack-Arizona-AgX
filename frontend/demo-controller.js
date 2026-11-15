@@ -47,13 +47,13 @@ function evaluateState(state) {
   return {...state, session, session_source, snapshot};
 }
 
-export function createDemoState({scenario: name = 'trap', clock_iso = INITIAL_SIM_TIME, profile} = {}) {
+export function createDemoState({scenario: name = 'trap', clock_iso = INITIAL_SIM_TIME, profile, demo_run_id = null} = {}) {
   if (!scenarios.includes(name)) throw new TypeError('Unknown demo scenario');
   if (!Number.isFinite(Date.parse(clock_iso))) throw new TypeError('Invalid simulation time');
   return evaluateState({
     scenario: name, minute: 0, clock_iso,
     profile: structuredClone(profile ?? getProfile(name === 'afternoon' ? 'volatile_formulation' : 'contact_fungicide')),
-    overrides: {}, session: null, session_source: null, handled_events: new Set()
+    overrides: {}, session: null, session_source: null, demo_run_id, handled_events: new Set()
   });
 }
 
@@ -64,6 +64,9 @@ export function reduceDemoState(state, event) {
   const payload = event.payload ?? {};
   let next = {...state};
   switch (event.event_type) {
+    case 'DEMO_RESET':
+      next = createDemoState({demo_run_id: state.demo_run_id});
+      break;
     case 'SCENARIO_SELECTED':
       if (!scenarios.includes(payload.name)) throw new TypeError('Unknown demo scenario');
       next.scenario = payload.name;
@@ -77,6 +80,7 @@ export function reduceDemoState(state, event) {
       if (payload.name === 'afternoon' && !next.session) next.profile = getProfile('volatile_formulation');
       break;
     case 'SIMULATION_TICK':
+    case 'SIMULATION_STEP':
       if (state.minute >= lastFrame(state.scenario)) return state;
       next.minute++;
       next.clock_iso = shift(state.clock_iso, 1);

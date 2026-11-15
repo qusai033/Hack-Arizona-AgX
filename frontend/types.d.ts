@@ -60,7 +60,7 @@ export type DemoEvent =
   | ActionEvent<'FRAME_SELECTED', {minute: number}>
   | ActionEvent<'PROFILE_CHANGED', {profile: PesticideProfile}>
   | ActionEvent<'READING_CHANGED', {height: 'ground_5ft' | 'canopy_30ft'; field: 'temp_f' | 'humidity_pct' | 'wind_speed_mph' | 'wind_dir_deg'; value: number}>
-  | ActionEvent<'SIMULATION_TICK' | 'OVERRIDES_RESET' | 'SESSION_STARTED' | 'SESSION_FINISHED' |
+  | ActionEvent<'DEMO_RESET' | 'SIMULATION_STEP' | 'SIMULATION_TICK' | 'OVERRIDES_RESET' | 'SESSION_STARTED' | 'SESSION_FINISHED' |
       'SESSION_RESET' | 'SESSION_EXAMPLE' | 'MANUAL_SNAPSHOT_RECORDED'>;
 export interface AuditRecord {
   id: string;
@@ -70,6 +70,8 @@ export interface AuditRecord {
   recorded_at: string;
   event: string;
   source: string;
+  /** Present only for explicitly owned demo activity; reset never infers ownership. */
+  demo_run_id?: string;
   session: SpraySession | null;
   snapshot: CanopySnapshot;
 }
@@ -118,6 +120,8 @@ export interface AuditRecordV2 {
   recorded_at: string;
   event: string;
   source: string;
+  /** Only explicitly identified demo runs can be reset. */
+  demo_run_id?: string;
   session: SpraySession | null;
   snapshot: CanopySnapshot;
   evidence: AuditEvidenceV2;

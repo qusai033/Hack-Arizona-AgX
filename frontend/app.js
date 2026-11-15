@@ -9,6 +9,7 @@ import { wetBulbDepression } from './engine/wet-bulb.js';
 import { monitorSession } from './engine/session.js';
 import { assertEvent, createEvent } from './events.js';
 import { createDemoState, reduceDemoState, lastFrame, AFTERNOON_REPLAY_TIME } from './demo-controller.js';
+import {createPlayback} from './playback.js';
 
 const $ = id => document.getElementById(id);
 const titles = { GO:'SAFE TO SPRAY NOW', CAUTION:'CAUTION — MARGINAL DRIFT RISK', STOP:'DO NOT SPRAY — HIGH DRIFT RISK' };
@@ -47,12 +48,12 @@ function auditSourceProvenance(){
     issued_at:weatherForecast.issued_at??null,issuance_source:weatherForecast.issuance_source??null,
     fetched_at:weatherForecast.fetched_at??null};
 }
-function publishSnapshot(action,{record=true,forceAlert=false}={}) {
+function publishSnapshot(action,{record=true,forceAlert=false,silentAlert=false}={}) {
   try{
     assertSnapshot(snapshot);
     renderSnapshot();
-    if(record&&!judgeGroundOnly)audit?.accept(snapshot,{source:mode,session,action,forceAlert,
-      provenance:auditSourceProvenance()});
+    if(record&&!judgeGroundOnly)audit?.accept(snapshot,{source:mode,session,action,forceAlert,silentAlert,provenance:auditSourceProvenance(),
+      ...(mode==='demo'?{demo_run_id:demoState.demo_run_id}:{})});
   }catch(error){fail(error);return false;}
   if(forecast.length)try{renderForecast();}catch(error){clearForecast(`Forecast unavailable: ${error.message}`);}
   return true;
@@ -62,11 +63,22 @@ function dispatchDemoEvent(action) {
   try{
     assertEvent(action);
     if(audit?.hasEvent(action.event_id))return false;
-    const next=reduceDemoState(currentDemo(),action);
-    if(next===currentDemo())return false;
+    if(action.event_type==='SIMULATION_STEP'&&playback.isPlaying())return false;
+    const resetting=action.event_type==='DEMO_RESET';
+    const previous=resetting&&judgeReplay?{...demoState,
+      handled_events:new Set([...demoState.handled_events,...judgeReplay.handled_events])}:currentDemo();
+    const next=reduceDemoState(previous,action);
+    if(next===previous)return false;
+    if(resetting){
+      resetPlayback();stopForecastPolling();++revision;clearInterval(timer);adapter=null;busy=false;
+      exitJudge({restore:false});
+      audit.resetDemoRun(demoState.demo_run_id);
+      selectedHeight='canopy_30ft';timeZone='America/Los_Angeles';intervalMinutes=30;
+      weatherForecast=null;$('weather-location').value='fresno';$('weather-network').textContent='';
+    }
     applyDemoState(next);
-    if(action.event_type==='PROFILE_CHANGED')updateProfileForecast();
-    return publishSnapshot(action);
+    if(resetting||action.event_type==='PROFILE_CHANGED')updateProfileForecast();
+    return publishSnapshot(resetting?{...action,event_type:'DEMO_INIT'}:action,{silentAlert:resetting});
   }catch(error){fail(error);return false;}
 }
 let paused=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -80,6 +92,9 @@ function controls() {
   $('session-finish').disabled=mode!=='demo'||replayTreatment()||invalid||session?.state!=='SPRAYING_IN_PROGRESS';
   $('session-example').disabled=mode!=='demo'||replayTreatment()||invalid||session?.state==='SPRAYING_IN_PROGRESS';
   $('session-reset').disabled=mode!=='demo'||replayTreatment()||!session;
+  $('weather-step').disabled=mode!=='demo'||invalid||busy||playback.isPlaying()||simulationMinute>=lastFrame(activeScenario);
+  $('weather-play').disabled=mode!=='demo'||invalid||busy;
+  $('demo-reset').disabled=mode!=='demo';
   document.querySelectorAll('[data-scenario]').forEach(b=>b.setAttribute('aria-pressed',String(mode==='demo'&&b.dataset.scenario===activeScenario)));
 }
 function source() {
@@ -264,7 +279,7 @@ function useDemo(name='trap') {
   const continuing=mode==='demo'&&demoState!==null;
   const action=createEvent(continuing?'SCENARIO_SELECTED':'DEMO_INIT',{name});
   let next;
-  try{next=continuing?reduceDemoState(demoState,action):createDemoState({scenario:name});}
+  try{next=continuing?reduceDemoState(demoState,action):createDemoState({scenario:name,demo_run_id:action.event_id});}
   catch(error){fail(error);throw error;}
   stopForecastPolling();
   exitJudge({restore:false});
@@ -318,6 +333,8 @@ $('json-file').addEventListener('change',async(event)=>{
   finally{event.target.value='';}
 });
 window.CanopyGuard=Object.freeze({connect,refresh,setSnapshot,useDemo,dispatchDemoEvent,
+  resetDemo:()=>mode==='demo'&&dispatchDemoEvent(createEvent('DEMO_RESET')),
+  stepDemo:()=>playback.step(),
   getSession:()=>session?structuredClone(session):null,setForecast(data,options={}){
   if(invalid)throw new Error('A valid snapshot is required before forecasts.');
   intervalMinutes=options.intervalMinutes||30;
@@ -329,8 +346,13 @@ const sliderFields = [
   ['temp_f','Temperature (°F)',-20,125,0.1],['wind_speed_mph','Wind (mph)',0,50,0.1],
   ['wind_dir_deg','Wind from (°)',0,360,1],['humidity_pct','Relative humidity (%)',0,100,1]
 ];
-let playback;
-function resetPlayback(){clearInterval(playback);playback=null;$('weather-play').textContent='Play';}
+const playback=createPlayback({
+  canAdvance:()=>mode==='demo'&&!invalid&&!busy&&simulationMinute<lastFrame(activeScenario),
+  tick:()=>dispatchDemoEvent(createEvent('SIMULATION_TICK')),
+  step:()=>dispatchDemoEvent(createEvent('SIMULATION_STEP')),
+  onChange:playing=>{$('weather-play').textContent=playing?'Pause':'Play';controls();}
+});
+function resetPlayback(){playback.pause();}
 for(const [height, title] of [['ground_5ft','5 ft ground'],['canopy_30ft','30 ft canopy']]){
   const panel=document.createElement('fieldset');
   panel.innerHTML=`<legend>${title}</legend>`;
@@ -348,6 +370,7 @@ for(const [height, title] of [['ground_5ft','5 ft ground'],['canopy_30ft','30 ft
 function syncWeatherControls(){
   $('weather-panel').hidden=mode!=='demo';
   if(mode!=='demo'||!snapshot)return;
+  $('weather-step').disabled=playback.isPlaying()||invalid||simulationMinute>=lastFrame(activeScenario);
   $('weather-minute').max=lastFrame(activeScenario);
   $('weather-minute').value=simulationMinute;
   $('weather-clock').textContent=`Minute ${simulationMinute} · ${formatTime(snapshot.timestamp,'America/Los_Angeles')}`;
@@ -359,13 +382,11 @@ function syncWeatherControls(){
 }
 $('weather-minute').addEventListener('input',event=>dispatchDemoEvent(createEvent('FRAME_SELECTED',{minute:Number(event.target.value)})));
 $('weather-reset').addEventListener('click',()=>dispatchDemoEvent(createEvent('OVERRIDES_RESET')));
+$('weather-step').addEventListener('click',()=>playback.step());
+$('demo-reset').addEventListener('click',()=>window.CanopyGuard.resetDemo());
 $('weather-play').addEventListener('click',()=>{
-  if(playback)return resetPlayback();
-  $('weather-play').textContent='Pause';
-  playback=setInterval(()=>{
-    if(mode!=='demo'||simulationMinute>=Number($('weather-minute').max))return resetPlayback();
-    dispatchDemoEvent(createEvent('SIMULATION_TICK'));
-  },activeScenario==='afternoon'?80:40);
+  if(playback.isPlaying())return resetPlayback();
+  playback.start(activeScenario==='afternoon'?80:40);
 });
 // Keep this list synchronized with the service registry; IDs are used for cache isolation.
 for (const [id,place] of Object.entries(locations)) {
@@ -521,12 +542,12 @@ function exitJudge({restore=true}={}){
   }
 }
 function startJudgeReplay(name,action,options={}){
-  if(mode!=='demo'||!demoState)demoState=createDemoState();
+  if(mode!=='demo'||!demoState)demoState=createDemoState({demo_run_id:action.event_id});
   stopForecastPolling();
   ++revision;clearInterval(timer);adapter=null;resetPlayback();weatherRequest?.abort();
   mode='demo';busy=false;timeZone='America/Los_Angeles';intervalMinutes=30;weatherForecast=null;
   // Judge replay has an isolated clock/session. Exiting restores the user's demo.
-  judgeReplay=createDemoState({scenario:name,clock_iso:name==='afternoon'?AFTERNOON_REPLAY_TIME:undefined});
+  judgeReplay=createDemoState({scenario:name,clock_iso:name==='afternoon'?AFTERNOON_REPLAY_TIME:undefined,demo_run_id:demoState.demo_run_id});
   applyDemoState(judgeReplay);forecast=demoForecast(snapshot.pesticide_profile);
   $('weather-network').textContent='';
   publishSnapshot(action,options);
