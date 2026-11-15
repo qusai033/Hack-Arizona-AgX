@@ -167,7 +167,7 @@ function renderSnapshot() {
   $('ground-reason').textContent=e.single_station_5ft_reason;
   const caught=e.caught_hidden_risk??(e.single_station_5ft_status==='GO'&&s==='STOP');
   $('canopy-status').className=`result-badge ${s}`;
-  $('canopy-status').textContent=`${icons[s]} ${mode==='forecast'?'Modeled Multi-Height Screening':'CanopyGuard Says'}: ${s}${caught?' (Hidden Drift Risk Caught!)':''}`;
+  $('canopy-status').textContent=`${icons[s]} ${mode==='forecast'?'Modeled Multi-Height Screening':'Prototype multi-height screening'}: ${s}${caught?' (Hidden Drift Risk Caught!)':''}`;
   $('delta-chips').innerHTML=`<span class="${d.temperature>0?'hot':''}">${signed(d.temperature)}°F ${d.temperature>0?'Inversion':'temperature difference'}</span><span>${signed(d.speed)} mph / ${Math.round(d.direction)}° Wind Shear</span>`;
   $('volatility').value=snapshot.pesticide_profile.volatility_class;
   $('nozzle').value=snapshot.pesticide_profile.nozzle_droplet_size;
