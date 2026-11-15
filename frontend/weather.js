@@ -29,23 +29,81 @@ const anchors = {
 export const presetNames = Object.freeze([...Object.keys(anchors), 'afternoon']);
 const hour = 3600000;
 const smooth = x => x*x*(3-2*x);
+// Each preset is anchored at the Fresno local time its story describes (PST = UTC−8).
+const anchorTimes = Object.freeze({
+  trap:'2026-11-15T14:45:00Z',        // 6:45 AM: dawn inversion still in place
+  calm:'2026-11-15T14:30:00Z',        // 6:30 AM: dead calm at sunrise
+  clear:'2026-11-15T18:00:00Z',       // 10:00 AM: morning mixing
+  evaporation:'2026-11-15T22:00:00Z', // 2:00 PM: hot, dry afternoon
+  afternoon:'2026-11-15T23:00:00Z'    // 3:00 PM: spray starts; inversion by 5:15 PM
+});
+/** Local clock minute (0 = 12:00 AM … 1439 = 11:59 PM, Fresno time) at which each preset starts. */
+export const presetClockMinutes = Object.freeze(Object.fromEntries(Object.entries(anchorTimes).map(([name, time])=>{
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',hour:'numeric',minute:'numeric',hourCycle:'h23'})
+    .formatToParts(new Date(time)).map(part=>[part.type,part.value]));
+  return [name, Number(parts.hour)*60+Number(parts.minute)];
+})));
+/** Local time of day ("6:45 AM") that a preset's frame models; minute is the offset from its anchor. */
+export function presetTimeOfDay(name, minute = 0) {
+  if(!Object.hasOwn(presetClockMinutes,name)||!Number.isInteger(minute)) throw new TypeError('Unknown weather preset or frame');
+  const clock = ((presetClockMinutes[name]+minute)%1440+1440)%1440, h = Math.floor(clock/60);
+  return `${h%12||12}:${String(clock%60).padStart(2,'0')} ${h<12?'AM':'PM'}`;
+}
+/** Air temperature cycle from local solar time: 0 at the ~6 AM minimum, 1 at the ~3 PM maximum. */
+function temperatureCycle(time, location) {
+  const date = new Date(time);
+  const h = ((date.getUTCHours()+date.getUTCMinutes()/60+location.longitude/15)%24+24)%24;
+  if(h>=6 && h<=15) return 0.5-0.5*Math.cos((h-6)/9*Math.PI);
+  return 0.5+0.5*Math.cos(((h<6?h+24:h)-15)/15*Math.PI);
+}
+/** Modeled 30 ft − 5 ft temperature gradient (°F) at a time, from the same layer model the forecast uses. */
+function layerGradient(time, wind, location) {
+  const layers = estimateLayers({timestamp:new Date(time).toISOString(),temperature:60,wind,direction:0,humidity:50,sky:'clear'},location);
+  return layers.canopy_30ft.temp_f-layers.ground_5ft.temp_f;
+}
+// Post-spray story (3:00–5:15 PM PST): ground cools after sunset until the canopy air is warmer.
+function afternoonOnset(minute) {
+  const cooling = smooth(clamp((minute-75)/60,0,1));
+  return [[75-7*cooling,5.5-2*cooling,315,45+20*cooling], [73.5-1.7*cooling,6.8-1.3*cooling,315,50+6*cooling]];
+}
+/**
+ * Conditions `minute` minutes after a known state ([temp, wind, direction, RH] at each height) at time t0.
+ * Minute 0 reproduces the state exactly; otherwise both heights warm and cool with the time of day and the
+ * 30 ft − 5 ft gradient follows the sun (lapse while the ground is heated, inversion after sunset).
+ */
+function followClock(ground, upper, t0, minute) {
+  const location = locations.fresno, t = t0+minute*60000;
+  const warming = 14*(temperatureCycle(t,location)-temperatureCycle(t0,location));
+  const anchorGradient = upper[0]-ground[0];
+  // The state's departure from the model (e.g. the trap's strong dawn inversion) holds overnight
+  // and is mixed out once the sun is clearly higher than at t0.
+  const anomaly = anchorGradient-layerGradient(t0,upper[1],location);
+  const sunGain = solarSignal(t,location)-Math.max(0,solarSignal(t0,location));
+  const persistence = 1-smooth(clamp(sunGain/0.35,0,1));
+  const gradientChange = layerGradient(t,upper[1],location)+anomaly*persistence-anchorGradient;
+  const groundTemp = ground[0]+warming-0.7*gradientChange, upperTemp = upper[0]+warming+0.3*gradientChange;
+  const turbulence = Math.sin(minute*Math.PI/360), drift = temperatureCycle(t,location)-temperatureCycle(t0,location);
+  return [[groundTemp,Math.max(0,ground[1]+0.8*turbulence),ground[2]+9*drift,clamp(ground[3]-1.5*(groundTemp-ground[0]),0,100)],
+    [upperTemp,Math.max(0,upper[1]+0.6*turbulence),upper[2]+4*drift,clamp(upper[3]-1.5*(upperTemp-upper[0]),0,100)]];
+}
 function frame(name, minute) {
   if(name === 'afternoon') {
-    const cooling = smooth(clamp((minute-75)/60,0,1));
-    return ['Afternoon inversion onset', [75-7*cooling,5.5-2*cooling,315,45+20*cooling], [73.5-1.7*cooling,6.8-1.3*cooling,315,50+6*cooling]];
+    const label = 'Afternoon inversion onset', t0 = Date.parse(anchorTimes.afternoon);
+    // Scripted 3:00–5:15 PM onset; before and after it, the same day/night model as the other presets.
+    if(minute < 0) return [label, ...followClock(...afternoonOnset(0), t0, minute)];
+    if(minute > 135) return [label, ...followClock(...afternoonOnset(135), t0+135*60000, minute-135)];
+    return [label, ...afternoonOnset(minute)];
   }
   const [label, ground, upper] = anchors[name] ?? [];
   if(!label) throw new TypeError('Unknown weather preset');
-  const phase = minute * Math.PI / 720;
-  const solar = Math.sin(phase), turbulence = Math.sin(2*phase);
-  return [label, [ground[0]+5*solar,Math.max(0,ground[1]+0.8*turbulence),ground[2]+9*solar,clamp(ground[3]-10*solar,0,100)],
-    [upper[0]+2*solar,Math.max(0,upper[1]+0.6*turbulence),upper[2]+4*solar,clamp(upper[3]-4*solar,0,100)]];
+  return [label, ...followClock(ground, upper, Date.parse(anchorTimes[name]), minute)];
 }
-/** Minute 0 is the preset anchor. E starts at 3 PM PST and reaches the inversion at minute 135. */
+/** Minute 0 is the preset anchor at its local time (see anchorTimes); playback follows the real clock. E starts at 3 PM PST and reaches the inversion at minute 135. */
 export function simulateWeather(name, minute = 0, profile, overrides = {}, session) {
-  if(!Number.isInteger(minute)||minute<0||minute>1440) throw new RangeError('Minute must be an integer from 0 to 1440');
+  // minute = offset from the preset's anchor; negative = earlier the same day (the dashboard plays 12:00 AM–11:59 PM).
+  if(!Number.isInteger(minute)||minute<-1440||minute>1440) throw new RangeError('Minute must be an integer from -1440 to 1440');
   const [label, ground, upper] = frame(name, minute);
-  const start = Date.parse(name==='afternoon'?'2026-11-15T23:00:00Z':'2026-11-15T06:45:00Z');
+  const start = Date.parse(anchorTimes[name]);
   const block = 'Block 4B - Nonpareil Almonds (Fresno, CA)';
   const timestamp = new Date(start+minute*60000).toISOString();
   const selected = profile ?? getProfile(name==='afternoon'?'volatile_formulation':'contact_fungicide');
@@ -54,7 +112,7 @@ export function simulateWeather(name, minute = 0, profile, overrides = {}, sessi
     const edit = overrides[key] ?? {};
     return [key, reading(edit.temp_f??temperature,edit.wind_speed_mph??speed,edit.wind_dir_deg??direction,edit.humidity_pct??humidity)];
   }));
-  if(name==='afternoon' && !session) {
+  if(name==='afternoon' && !session && minute>=0) {
     const applied = getProfile('volatile_formulation');
     const started = startSpray(createSession(block,applied),new Date(start).toISOString());
     const end = new Date(start+15*60000).toISOString();
@@ -167,4 +225,3 @@ export async function loadOrchardForecast(id, profile, {nowMs=Date.now(), fetchI
   return {location_id:id,location_label:location.label,source,fetched_at,error,time_zone:location.zone,interval_minutes:60,snapshots,window:forecastWindow(snapshots,nowMs,location.zone)};
 }
 
-# Automated fix for issue #7: Refresh forecast windows when simulation time advances

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { simulateWeather, loadOrchardForecast, normalizeHourly, locations } from '../frontend/weather.js';
+import { simulateWeather, loadOrchardForecast, normalizeHourly, locations, presetClockMinutes, presetTimeOfDay } from '../frontend/weather.js';
 import { getProfile } from '../frontend/engine/index.js';
 import { assertSnapshot } from '../frontend/contract.js';
 
@@ -104,4 +104,44 @@ test('production HTML derives forecast options from the shared registry and requ
   assert.ok(app.includes("result.source==='synthetic'&&mode!=='demo'"));
   assert.ok(app.includes("forecastRequestId"));
   assert.ok(app.includes('weatherForecast.location_id!==id'));
+});
+test('preset playback follows the local clock: anchors at their story times, no midday inversion, inversions return at night',()=>{
+  const localHour=snapshot=>Number(new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',hour:'numeric',hourCycle:'h23'}).format(new Date(snapshot.timestamp)));
+  const anchorHours={trap:6,calm:6,clear:10,evaporation:14,afternoon:15};
+  for(const [name,hour] of Object.entries(anchorHours))assert.equal(localHour(simulateWeather(name)),hour,`${name} anchor hour`);
+  const profile=getProfile('volatile_formulation');
+  for(const name of ['trap','calm','clear','evaporation']){
+    let nightInversion=false;
+    for(let minute=0;minute<=1440;minute+=10){
+      const snapshot=simulateWeather(name,minute,profile),h=localHour(snapshot);
+      const gradient=snapshot.readings.canopy_30ft.temp_f-snapshot.readings.ground_5ft.temp_f;
+      if(h>=11&&h<15){
+        assert.ok(gradient<0,`${name} minute ${minute} (${h}:00) shows a midday inversion of ${gradient.toFixed(2)}°F`);
+        assert.ok(!snapshot.evaluation.triggered_rules.some(rule=>rule.code==='INVERSION_DETECTED'),`${name} minute ${minute} flags a midday inversion`);
+      }
+      if((h>=20||h<5)&&gradient>0)nightInversion=true;
+    }
+    assert.ok(nightInversion,`${name} never forms a night inversion`);
+  }
+});
+test('dashboard clock covers 12:00 AM–11:59 PM of the preset day',()=>{
+  const localTime=snapshot=>new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date(snapshot.timestamp));
+  assert.deepEqual({...presetClockMinutes},{trap:405,calm:390,clear:600,evaporation:840,afternoon:900});
+  for(const [name,clock] of Object.entries(presetClockMinutes)){
+    assert.equal(localTime(assertSnapshot(simulateWeather(name,-clock))),'Nov 15, 12:00 AM',`${name} at the slider's start`);
+    assert.equal(localTime(assertSnapshot(simulateWeather(name,1439-clock))),'Nov 15, 11:59 PM',`${name} at the slider's end`);
+  }
+  // Before the 3:00 PM application there is no treatment, so no post-spray alert.
+  const morning=simulateWeather('afternoon',-300);
+  assert.ok(!morning.evaluation.triggered_rules.some(rule=>rule.code==='POST_SPRAY_VOLATILITY_ALERT'));
+  assert.ok(simulateWeather('afternoon',135).evaluation.triggered_rules.some(rule=>rule.code==='POST_SPRAY_VOLATILITY_ALERT'));
+});
+test('presetTimeOfDay labels a frame with the local time its conditions model',()=>{
+  assert.equal(presetTimeOfDay('trap'),'6:45 AM');
+  assert.equal(presetTimeOfDay('clear',120),'12:00 PM');
+  assert.equal(presetTimeOfDay('afternoon',135),'5:15 PM');
+  assert.equal(presetTimeOfDay('evaporation',1440),'2:00 PM');
+  assert.equal(presetTimeOfDay('calm',-390),'12:00 AM');
+  assert.throws(()=>presetTimeOfDay('unknown'),TypeError);
+  assert.throws(()=>presetTimeOfDay('trap',1.5),TypeError);
 });
