@@ -82,13 +82,13 @@ export function mountAudit({zone=()=> 'America/Los_Angeles', onRecordSnapshot, l
     const data=auditCSV(filterRecords(log.list(),filter),zone());
     const url=URL.createObjectURL(new Blob(['\uFEFF',data],{type:'text/csv;charset=utf-8'}));
     const link=document.createElement('a');
-    link.href=url;link.download='canopyguard-pca-audit.csv';link.click();
+    link.href=url;link.download='canopyguard-activity-log.csv';link.click();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
   function printReport() {
     const records=filterRecords(log.list(),filter).reverse();
     const report=$('audit-print');
-    report.innerHTML=`<h1>CanopyGuard Spray Compliance Report</h1><p>Generated ${esc(localDate(new Date().toISOString(),zone()))} · ${esc(zone())} · Filter: ${esc(filter)} · ${records.length} records</p><p>Decision-support record. Source labels distinguish simulation from connected observations. Verify pesticide labels and on-site conditions.</p>`;
+    report.innerHTML=`<h1>CanopyGuard Activity &amp; Decision Log</h1><p>Generated ${esc(localDate(new Date().toISOString(),zone()))} · ${esc(zone())} · Filter: ${esc(filter)} · ${records.length} records</p><p>Prototype record only. Source labels distinguish simulation from connected observations. This report is not a compliance certification or application clearance. Verify pesticide labels and on-site conditions.</p>`;
     for(const row of records){
       const s=row.snapshot, e=s.evaluation,d=deltas(s),g=s.readings.ground_5ft,c=s.readings.canopy_30ft;
       const section=document.createElement('section');
