@@ -15,7 +15,7 @@ import { mountCanopyView } from './canopy-view.js';
 
 mountCanopyView(document.getElementById('canopy-view-slot'));
 const $ = id => document.getElementById(id);
-const titles = { GO:'SAFE TO SPRAY NOW', CAUTION:'CAUTION — MARGINAL DRIFT RISK', STOP:'DO NOT SPRAY — HIGH DRIFT RISK' };
+const titles = { GO:'GO — configured weather checks passed', CAUTION:'CAUTION — MARGINAL DRIFT RISK', STOP:'DO NOT SPRAY — HIGH DRIFT RISK' };
 const icons = { GO:'✓', CAUTION:'!', STOP:'×' };
 const ruleNames = { INVERSION_DETECTED:'Temperature inversion', UPPER_WIND_EXCEEDED:'Upper wind exceeds limit', GROUND_WIND_EXCEEDED:'Ground wind exceeds limit', DIRECTIONAL_WIND_SHEAR:'Wind direction shift', VERTICAL_WIND_SHEAR:'Vertical wind shear', GROUND_WIND_TOO_CALM:'Ground wind too calm', UPPER_WIND_TOO_CALM:'Upper wind too calm', GROUND_WIND_CAUTION:'Ground wind near limit', UPPER_WIND_CAUTION:'Upper wind near limit', GROUND_EVAPORATIVE_RISK:'Ground evaporation risk', UPPER_EVAPORATIVE_RISK:'Canopy evaporation risk', POST_SPRAY_VOLATILITY_ALERT:'Post-spray volatility alert', DATA_INVALID:'Evaluation unavailable' };
 let snapshot, mode='unavailable', activeScenario='trap', selectedHeight='canopy_30ft', adapter=null;
@@ -107,6 +107,7 @@ function controls() {
     adapter?.evaluateProfile ? 'Profile changes are evaluated by the connected risk engine.' :
     mode==='imported' ? 'Imported snapshots are read-only. Use the interactive demo to explore profile settings.' :
     'Profile changes require a connected evaluator; this sensor snapshot is read-only.';
+  if(mode==='demo'||mode==='forecast')$('profile-hint').textContent+=' Illustrative thresholds only; not product-label limits or application clearance.';
   $('session-start').disabled=mode!=='demo'||replayTreatment()||invalid||busy||session?.state==='SPRAYING_IN_PROGRESS'||session?.state==='POST_SPRAY_CURING'||snapshot?.evaluation.multi_height_status!=='GO';
   $('session-finish').disabled=mode!=='demo'||replayTreatment()||invalid||session?.state!=='SPRAYING_IN_PROGRESS';
   $('session-example').disabled=mode!=='demo'||replayTreatment()||invalid||session?.state==='SPRAYING_IN_PROGRESS';
@@ -160,8 +161,8 @@ function renderSnapshot() {
   $('observation-time').textContent=`${mode==='demo'?'Demo observation':mode==='forecast'?'Forecast valid time':mode==='imported'?'Imported timestamp':'Observed'} · ${new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone,timeZoneName:'short'}).format(new Date(snapshot.timestamp))}`;
   $('decision').className=`decision ${s}`;
   $('decision-icon').textContent=icons[s];
-  $('decision-label').textContent=`${mode==='forecast'?'MODELED FORECAST SCREENING':'CANOPYGUARD RECOMMENDATION'} · ${s}`;
-  $('decision-title').textContent=mode==='forecast'&&s==='GO'?'MODELED LOW RISK — VERIFY ON SITE':titles[s];
+  $('decision-label').textContent=`${mode==='forecast'?'MODELED FORECAST SCREENING':'PROTOTYPE SCREENING STATUS'} · ${s}`;
+  $('decision-title').textContent=titles[s];
   $('headline').textContent=e.headline_reason;
   $('decision-note').textContent=mode==='forecast'?'Estimated 5 ft/30 ft conditions from regional NWS forecast. NOT measured orchard conditions. Never treat forecast GO as spray clearance.':
     `Based on both heights · ${mode==='demo'?'Demonstration only':mode==='imported'?'Imported snapshot only':'Check on-site conditions before application'}`;
@@ -169,15 +170,16 @@ function renderSnapshot() {
   $('ground-readings').innerHTML=readings(snapshot.readings.ground_5ft);
   $('canopy-readings').innerHTML=readings(snapshot.readings.canopy_30ft);
   $('ground-status').className=`result-badge ${e.single_station_5ft_status}`;
-  $('ground-status').textContent=`${icons[e.single_station_5ft_status]} ${mode==='forecast'?'Modeled Ground Screening':'Ground Station Says'}: ${e.single_station_5ft_status}${mode!=='forecast'&&e.single_station_5ft_status==='GO'?' (Looks Safe)':''}`;
+  $('ground-status').textContent=`${icons[e.single_station_5ft_status]} ${mode==='forecast'?'Modeled Ground Screening':'Ground-only comparison'}: ${e.single_station_5ft_status}`;
   $('ground-reason').textContent=e.single_station_5ft_reason;
   const caught=e.caught_hidden_risk??(e.single_station_5ft_status==='GO'&&s==='STOP');
   $('canopy-status').className=`result-badge ${s}`;
-  $('canopy-status').textContent=`${icons[s]} ${mode==='forecast'?'Modeled Multi-Height Screening':'CanopyGuard Says'}: ${s}${caught?' (Hidden Drift Risk Caught!)':''}`;
+  $('canopy-status').textContent=`${icons[s]} ${mode==='forecast'?'Modeled Multi-Height Screening':'Prototype multi-height screening'}: ${s}${caught?' (Hidden Drift Risk Caught!)':''}`;
   $('delta-chips').innerHTML=`<span class="${d.temperature>0?'hot':''}">${signed(d.temperature)}°F ${d.temperature>0?'Inversion':'temperature difference'}</span><span>${signed(d.speed)} mph / ${Math.round(d.direction)}° Wind Shear</span>`;
   $('volatility').value=snapshot.pesticide_profile.volatility_class;
   $('nozzle').value=snapshot.pesticide_profile.nozzle_droplet_size;
-  $('profile-name').textContent=snapshot.pesticide_profile.name+(mode==='demo'?' · Generic screening preset':'');
+  $('profile-name').textContent=snapshot.pesticide_profile.name+
+    (mode==='demo'||mode==='forecast'?' · Illustrative screening preset':' · Connected/imported profile (not label-verified)');
   const p=snapshot.pesticide_profile;
   $('profile-preset').value=Object.entries(PROFILES).find(([,v])=>Object.keys(v).every(k=>v[k]===p[k]))?.[0]||'custom';
   try {const limits=thresholdsFor(p);
