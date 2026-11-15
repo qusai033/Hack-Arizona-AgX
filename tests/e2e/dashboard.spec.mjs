@@ -26,7 +26,7 @@ function captureErrors(page) {
 
 async function expectWeatherOnlySessionView(page, notice = 'Weather forecasts do not include treatment history or post-application monitoring.') {
   await expect(page.locator('#session-panel')).toBeHidden();
-  const message = page.locator('#forecast #session-production-notice');
+  const message = page.locator('#forecast #forecast-session-notice');
   await expect(message).toBeVisible();
   await expect(message).toHaveText(notice);
 }
@@ -403,9 +403,13 @@ test('production loading and fresh NWS forecasts hide the inactive treatment car
 test('Arizona locations show the AZMET station check without changing the modeled decision', async ({ page }) => {
   const blocked = await isolateNetwork(page, ['https://api.weather.gov', 'https://api.azmet.arizona.edu']);
   const errors = captureErrors(page);
+  // Keep the five-minute-old station observation inside the first forecast hour,
+  // even when CI runs just after the wall clock crosses an hour boundary.
+  const nowMs = Date.parse('2026-11-15T18:30:00Z');
+  await page.clock.setFixedTime(nowMs);
   await stubNws(page, {
     points: route => route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(pointResponse()) }),
-    hourly: route => route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(hourlyResponse()) })
+    hourly: route => route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(hourlyResponse({ nowMs })) })
   });
   const stationRequests = [];
   await page.route('https://api.azmet.arizona.edu/**', route => {
@@ -414,7 +418,7 @@ test('Arizona locations show the AZMET station check without changing the modele
     const id = url.pathname.split('/')[4];
     if (id !== 'az02') return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
     // AZMET timestamps are Arizona local time (MST, UTC-7) without a zone.
-    const datetime = new Date(Date.now() - 5 * 60_000 - 7 * 3_600_000).toISOString().slice(0, 19).replace('T', ' ');
+    const datetime = new Date(nowMs - 5 * 60_000 - 7 * 3_600_000).toISOString().slice(0, 19).replace('T', ' ');
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [{
       datetime, meta_needs_review: '0', meta_station_id: 'az02', meta_station_name: 'Yuma Valley',
       relative_humidity: '40', temp_airC: '25.0', temp_air_30cmC: '23.0',
@@ -536,7 +540,7 @@ test('forecast profile controls re-screen NWS weather, retain the profile throug
   await expectWeatherOnlySessionView(page);
   await expect(page.locator('#demo-session-actions')).toBeHidden();
   await expect(page.locator('#session-demo-disclaimer')).toBeHidden();
-  await expect(page.locator('#session-production-notice')).toBeVisible();
+  await expect(page.locator('#forecast-session-notice')).toBeVisible();
   await expect(page.locator('#demo-entry')).toBeVisible();
   await expect(page.locator('#forecast-entry')).toBeHidden();
 
@@ -582,7 +586,7 @@ test('forecast profile controls re-screen NWS weather, retain the profile throug
   expect(errors).toEqual([]);
 });
 
-test('visible links switch between production and interactive demo, revealing session controls only in demo',async({page})=>{
+test('visible links switch treatment-session visibility between forecast and demo modes',async({page})=>{
   const blocked=await isolateNetwork(page,['https://api.weather.gov']);
   const errors=captureErrors(page);
   await stubNws(page,{
@@ -594,9 +598,23 @@ test('visible links switch between production and interactive demo, revealing se
   await expect(page.locator('#forecast-entry')).toBeVisible();
   await expect(page.locator('#session-panel')).toBeVisible();
   await expect(page.locator('#demo-session-actions')).toBeVisible();
-  await expect(page.locator('#session-production-notice')).toBeHidden();
+  await expect(page.locator('#forecast-session-notice')).toBeHidden();
   await expect(page.locator('#session-demo-disclaimer')).toBeVisible();
   await expect(page.locator('#session-start')).toBeDisabled(); // Default trap is STOP.
+
+  // Switching to the forecast hides the disconnected session card and shows one clear note.
+  await page.locator('#forecast-entry').click();
+  await expect(page.locator('#weather-network')).toContainText('Fresno, CA: NWS model retrieved',{timeout:20000});
+  await expect(page.locator('#session-panel')).toBeHidden();
+  await expect(page.locator('#demo-session-actions')).toBeHidden();
+  await expect(page.locator('#forecast-session-notice')).toBeVisible();
+
+  // Returning to demo restores the original session walkthrough and controls.
+  await page.locator('#demo-entry').click();
+  await expect(page.locator('#session-panel')).toBeVisible();
+  await expect(page.locator('#demo-session-actions')).toBeVisible();
+  await expect(page.locator('#forecast-session-notice')).toBeHidden();
+  await expect(page.locator('#session-demo-disclaimer')).toBeVisible();
   await page.locator('[data-scenario="clear"]').click();
   await expect(page.locator('#session-start')).toBeEnabled();
   await page.locator('#session-start').click();
@@ -609,7 +627,24 @@ test('visible links switch between production and interactive demo, revealing se
   await page.locator('#demo-entry').click();
   await expect(page.locator('#session-panel')).toBeVisible();
   await expect(page.locator('#session-state')).toHaveText('BEFORE SPRAY');
-  await expect(page.locator('#session-production-notice')).toBeHidden();
+  await expect(page.locator('#forecast-session-notice')).toBeHidden();
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('a malformed JSON import hides the previous demo treatment card', async ({ page }) => {
+  const blocked = await isolateNetwork(page);
+  const errors = captureErrors(page);
+  await page.goto('/?mode=demo');
+  await page.locator('#session-example').click();
+  await expect(page.locator('#session-state')).toHaveText('POST SPRAY CURING');
+  await page.locator('#json-file').setInputFiles({
+    name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('{')
+  });
+  await expect(page.locator('#source-badge')).toContainText('IMPORTED SNAPSHOT');
+  await expect(page.locator('#error-message')).toBeVisible();
+  await expectWeatherOnlySessionView(page,
+    'Imported snapshots do not include connected treatment history or post-application monitoring.');
   expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
 });
@@ -636,7 +671,7 @@ for (const source of ['imported', 'live']) {
 
     await page.evaluate(() => window.CanopyGuard.useDemo('clear'));
     await expect(page.locator('#session-panel')).toBeVisible();
-    await expect(page.locator('#session-production-notice')).toBeHidden();
+    await expect(page.locator('#forecast-session-notice')).toBeHidden();
     await expect(page.locator('#session-start')).toBeEnabled();
     expect(blocked).toEqual([]);
     expect(errors).toEqual([]);
@@ -803,4 +838,38 @@ test('production forecast keeps modeled-source warnings alongside the new config
   await expect(page.locator('.prototype-disclaimer')).toContainText('not application clearance or a safety determination');
   expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
+});
+
+test('a displayed NWS model is kept after a failed refresh only until its issuance passes the 6-hour limit (#47)', async ({ page }) => {
+  const blocked = await isolateNetwork(page, ['https://api.weather.gov']);
+  const errors = captureErrors(page);
+  const startMs = Date.parse('2026-11-15T18:00:00Z');
+  await page.clock.install({ time: startMs });
+  let online = true;
+  const offline = route => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+  await stubNws(page, {
+    points: route => online ? route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(pointResponse()) }) : offline(route),
+    // Issued 5 h 59 m 15 s before the page clock: 45 seconds inside the 6-hour issuance limit.
+    hourly: route => online ? route.fulfill({ status: 200, contentType: 'application/geo+json',
+      body: JSON.stringify(hourlyResponse({ nowMs: startMs, issuedAt: new Date(startMs - (6 * 3600 - 45) * 1000).toISOString() })) }) : offline(route)
+  });
+  const dropCache = () => page.evaluate(() => { for (const key of Object.keys(localStorage)) if (key.startsWith('canopyguard-nws-')) localStorage.removeItem(key); });
+
+  await page.goto('/');
+  await expect(page.locator('#weather-network')).toContainText('NWS model retrieved', { timeout: 20000 });
+  await expect(page.locator('#decision-title')).not.toContainText('DATA UNAVAILABLE');
+
+  // NWS goes down and no cached copy exists: the displayed model stays, labelled, while still within the limit.
+  online = false;
+  await dropCache();
+  await page.clock.runFor(30000); // issuance age 6 h − 15 s
+  await expect(page.locator('#forecast-source')).toContainText('PREVIOUS NWS MODEL (REFRESH FAILED)');
+  await expect(page.locator('#decision-title')).not.toContainText('DATA UNAVAILABLE');
+
+  await dropCache();
+  await page.clock.runFor(30000); // issuance age 6 h + 15 s
+  await expect(page.locator('#decision-title')).toContainText('DATA UNAVAILABLE');
+  await expect(page.locator('#forecast-source')).toContainText('FORECAST UNAVAILABLE');
+  expect(blocked).toEqual([]);
+  expect(errors.filter(error => !error.includes('status of 503 (Service Unavailable)'))).toEqual([]);
 });
