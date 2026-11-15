@@ -687,3 +687,53 @@ test('forecast evaluation timestamp is separate from hourly valid, NWS issue, fe
   expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+
+test('SPEC-COPY and SPEC-DISCLOSURE: demo shows illustrative inputs, a no-clearance disclaimer and 5-ft blind spots',async({page})=>{
+  const blocked=await isolateNetwork(page);
+  const errors=captureErrors(page);
+  await page.goto('/?mode=demo');
+  const disclaimer='Decision-support prototype using simulated/regional inputs. Does not replace pesticide product labels, on-site measurements, or local regulations.';
+  await expect(page.locator('.prototype-disclaimer')).toContainText(disclaimer);
+  await expect(page.locator('footer')).toContainText(disclaimer);
+  await expect(page.locator('.ground-limitations')).toContainText('Unobservable from 5 ft');
+  for(const term of ['Inversion gradient','Upper-canopy wind','directional wind shear']){
+    await expect(page.locator('.ground-limitations')).toContainText(term);
+  }
+  for(const id of ['contact_fungicide','volatile_formulation','fine_airblast','dormant_oil']){
+    await page.locator('#profile-preset').selectOption(id);
+    await expect(page.locator('#profile-name')).toContainText('Illustrative');
+    await expect(page.locator('#profile-hint')).toContainText('Illustrative thresholds only');
+  }
+  await page.locator('[data-scenario="clear"]').click();
+  await expect(page.locator('#decision-title')).toHaveText('GO — configured weather checks passed');
+  await expect(page.locator('#decision-label')).toContainText('PROTOTYPE SCREENING STATUS');
+  await expect(page.locator('#audit-title')).toHaveText('Activity & Decision Log');
+  await expect(page.locator('#audit-download')).toHaveText('Export Activity Log (CSV)');
+  await expect(page.locator('#audit-report')).toHaveText('Generate Printable Activity Summary');
+  await page.evaluate(()=>{window.print=()=>{}});
+  await page.locator('#audit-report').click();
+  await expect(page.locator('#audit-print h1')).toHaveText('CanopyGuard Activity & Decision Log');
+  for(const width of [1280,768,390]){
+    await page.setViewportSize({width,height:900});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  }
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('production forecast keeps modeled-source warnings alongside the new configured-check wording',async({page})=>{
+  const blocked=await isolateNetwork(page,['https://api.weather.gov']);
+  const errors=captureErrors(page);
+  await stubNws(page,{
+    points:route=>route.fulfill({status:200,contentType:'application/geo+json',body:JSON.stringify(pointResponse())}),
+    hourly:route=>route.fulfill({status:200,contentType:'application/geo+json',body:JSON.stringify(hourlyResponse())})
+  });
+  await page.goto('/');
+  await expect(page.locator('#weather-network')).toContainText('NWS model retrieved',{timeout:20000});
+  await expect(page.locator('#decision-label')).toContainText('MODELED FORECAST SCREENING');
+  await expect(page.locator('#decision-note')).toContainText('NOT measured orchard conditions');
+  await expect(page.locator('.prototype-disclaimer')).toContainText('not application clearance or a safety determination');
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});
