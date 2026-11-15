@@ -155,5 +155,7 @@ test('time-context corruption or fabricated evaluated_at is rejected without mut
   }
   map.set('canopyguard.audit.v1.tamper',JSON.stringify(saved));
   assert.deepEqual(createAuditLog(storage).get('tamper'),saved);
-  assert.throws(()=>analyze(saved.snapshot,{evaluationTimeMs:NaN}).evaluation.multi_height_status==='GO'&&null,/^$/);
+  const rejected=analyze(saved.snapshot,{evaluationTimeMs:NaN});
+  assert.equal(rejected.evaluation.multi_height_status,'STOP');
+  assert.ok(rejected.evaluation.triggered_rules.some(rule=>rule.code==='DATA_INVALID'));
 });
