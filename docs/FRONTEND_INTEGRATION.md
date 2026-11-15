@@ -85,3 +85,13 @@ window.CanopyGuard.useDemo('trap'); // or 'marginal' / 'clear'
 Use `evaluateSnapshot(weatherPayload, {session: active_spray_session, nowMs: Date.now()})` in your **current observation** adapter; omit session if none is recorded. For forecast rows, omit `nowMs` and current-session context unless explicitly modeling that treatment. The engine itself never reads the clock. Do not pass a current `nowMs` to future forecasts.
 
 See [DECISION_ENGINE.md](DECISION_ENGINE.md) for the complete API. Four preset selections and demo session controls are integrated into the dashboard. The actual applied profile is locked while spraying. The “Demo: treated 2 hrs ago” action records a simulated HIGH treatment; changing the next-product selector does not remove its alert. Session controls are disabled for imported/live observations; persist real sessions in the backend.
+
+## Integrated NWS profile screening (November 2026)
+
+The normal NWS forecast view is a distinct `mode='forecast'`, not a live connected sensor. It includes its **own** built-in profile evaluation path: the browser imports `reevaluateForecastModel` from `frontend/forecast-profile.js` and evaluates every returned modeled hour with the selected preset/volatility/nozzle. This does **not** require an `adapter.evaluateProfile` callback. The selected profile is stored separately from weather/source state and survives city switching and NWS refresh requests within the current page.
+
+This does not alter the external live adapter contract documented above. A live adapter must still provide `evaluateProfile` to enable editing a connected measurement; imported snapshots remain read-only. All model re-evaluations retain the source NWS issuance metadata and reject expired issuance. Profile changes produce audit events and are not real spray transactions.
+
+NWS and imported/live views show a **NOT CONNECTED** treatment state when no session system is provided and do not display simulated treatment buttons. The visible page-mode link starts the optional `?mode=demo` walkthrough. Demo sessions continue to use the existing deterministic controller and full treatment evidence.
+
+Unit tests: `tests/forecast-profile.test.mjs`. Integration tests: `tests/e2e/dashboard.spec.mjs`.

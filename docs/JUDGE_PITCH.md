@@ -18,7 +18,7 @@ Click **2 · Canopy trap**. Point at the reason cards, then the canopy view.
 
 Click **3 · Volatility & forecast**. Point at the post-spray notification, then the green forecast interval.
 
-> Risk can change after the tractor leaves. In this replay we finished a high-volatility treatment at three fifteen. At five fifteen, the ground has cooled enough to create a three point eight degree inversion. CanopyGuard raises a post-spray alert using the product profile recorded at treatment. The forecast timeline also helps plan the next pass. The bundled demo shows a screening window from nine in the morning until one thirty. For current planning, the dashboard can pull hourly National Weather Service data for Fresno or Willcox and model both orchard heights.
+> Risk can change after the tractor leaves. In this replay we finished a high-volatility treatment at three fifteen. At five fifteen, the ground has cooled enough to create a three point eight degree inversion. CanopyGuard raises a post-spray alert using the product profile recorded at treatment. The forecast timeline also helps plan the next pass. The bundled demo shows a screening window from nine in the morning until one thirty. For current planning, the dashboard can pull hourly National Weather Service data for six California locations, including Fresno and Modesto, and model both orchard heights.
 
 ## 2:15–3:00 | Teammate 4 | Audit and export
 

@@ -138,3 +138,42 @@ body{padding-bottom:130px}
     grid-column:auto;
   }
 }
+
+
+/* Explicit operating-mode navigation and honest session-availability state. */
+.source-info .mode-link{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  margin-top:7px;
+  padding:9px 13px;
+  max-width:100%;
+  min-height:40px;
+  border:1px solid #a8bca6;
+  border-radius:8px;
+  background:#f4f8ef;
+  color:#234732;
+  font-size:12px;
+  font-weight:700;
+  line-height:1.3;
+  text-decoration:none;
+  text-align:center;
+}
+.source-info .mode-link:hover{background:#e4efe1;border-color:#7f9f78}
+.source-info .mode-link:focus-visible{outline:3px solid #226bcb;outline-offset:3px}
+#session-production-notice{
+  display:block;
+  max-width:900px;
+  margin-top:18px;
+  padding:14px 17px;
+  border:1px solid #d6e1cf;
+  border-radius:8px;
+  background:#f5f8f2;
+  font-size:13px;
+  line-height:1.6;
+  overflow-wrap:anywhere;
+}
+@media(max-width:760px){
+  .source-info .mode-link{font-size:11px;padding:8px 9px}
+  #session-production-notice{padding:12px;font-size:12px}
+}
