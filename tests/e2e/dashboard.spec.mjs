@@ -263,7 +263,7 @@ test('dismissed alerts recur on a new risky transition and both demo reset contr
   expect(errors).toEqual([]);
 });
 
-test('four-step judge walkthrough keeps its anchored forecast and filtered audit download', async ({ page, testInfo }) => {
+test('four-step judge walkthrough keeps its anchored forecast and filtered audit download', async ({ page }, testInfo) => {
   const blocked = await isolateNetwork(page);
   const errors = captureErrors(page);
   await page.goto('/?mode=demo');
