@@ -44,6 +44,11 @@ export interface SpraySession {
 }
 export interface EvaluationContext {
   session?: SpraySession;
+  /** Explicit evaluation-boundary Unix time, independent of nowMs freshness checks.
+   * For demo this is the deterministic simulation clock; for NWS the
+   * screening execution clock, not the future forecast-valid time.
+   */
+  evaluationTimeMs?: number;
   nowMs?: number;
   maxAgeMs?: number;
   labelProhibitsInversion?: boolean;
@@ -109,6 +114,10 @@ export interface AuditEvidenceV2 {
     simulation_clock_at: string | null;
     forecast_valid_at: string | null;
     observation_at: string | null;
+    /** Timestamp from evaluation_context.evaluationTimeMs when built-in and
+     * supplied. Older v2 and externally evaluated records remain null.
+     * It is never inferred from recorded_at or snapshot_at.
+     */
     evaluated_at: string | null;
   };
 }
