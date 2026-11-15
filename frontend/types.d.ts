@@ -15,6 +15,36 @@ export interface PesticideProfile {
   max_wind_mph: number;
   post_spray_monitor_hours: number;
 }
+/** Input completeness/freshness, not evidence of an on-site sensor or agronomic accuracy. */
+export interface HeightInputQuality {
+  status: 'VALID' | 'INVALID' | 'STALE' | 'FUTURE';
+  /** Observation age from context.nowMs, null if no freshness clock was supplied. */
+  age_ms: number | null;
+  issues: string[];
+}
+export interface InputQuality {
+  overall_status: 'VALID' | 'INVALID_OR_STALE';
+  assessment: 'STRUCTURE_ONLY' | 'STRUCTURE_AND_AGE';
+  age_ms: number | null;
+  /** Explicit evaluator boundary time; never inferred from forecast-valid time. */
+  evaluated_at: string | null;
+  issues: string[];
+  ground_5ft: HeightInputQuality;
+  canopy_30ft: HeightInputQuality;
+}
+export interface TriggeredRule {
+  code: string;
+  severity: Status;
+  metric: string;
+  explanation: string;
+  /** Absent in historical/imported evaluations; when present, policy provenance
+   * must never imply a registered product label or a verified field measurement.
+   */
+  provenance?: 'ILLUSTRATIVE_THRESHOLD' | 'SAFETY_FAILSAFE';
+  /** Height(s) involved in the screening rule, in feet. */
+  source_heights?: (5 | 30)[];
+  is_upper_or_cross_height_hazard?: boolean;
+}
 export interface CanopySnapshot {
   timestamp: string;
   scenario_name: string;
@@ -26,9 +56,13 @@ export interface CanopySnapshot {
     single_station_5ft_reason: string;
     multi_height_status: Status;
     headline_reason: string;
-    triggered_rules: { code: string; severity: Status; metric: string; explanation: string }[];
+    triggered_rules: TriggeredRule[];
+    /** Optional for historical v1/v2 records and externally supplied results. */
+    data_quality?: InputQuality;
     post_spray_volatility_risk: string;
-    /** v1.1: engine always emits this; optional only for legacy v1 imports. */
+    /** A valid, qualified upper/cross-height STOP that ground-only checks missed.
+     * Never credit a data-integrity fail-safe; optional for historical imports.
+     */
     caught_hidden_risk?: boolean;
   };
 }
