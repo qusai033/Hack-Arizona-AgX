@@ -17,10 +17,14 @@ function validateEvidence(row) {
   const e = row.evidence, context = e.evaluation_context;
   check(row.event_id === row.id && Number.isSafeInteger(row.sequence_number) && row.sequence_number > 0, 'v2 identity');
   check(row.session === null || object(row.session), 'session');
-  check(Object.keys(context).every(key => ['session', 'nowMs', 'maxAgeMs', 'labelProhibitsInversion'].includes(key)), 'context fields');
+  check(Object.keys(context).every(key => ['session', 'nowMs', 'maxAgeMs', 'labelProhibitsInversion', 'evaluationTimeMs'].includes(key)), 'context fields');
   if ('session' in context) assertSession(context.session);
   check(equal(context.session ?? null, row.session), 'session context');
-  if ('nowMs' in context) check(Number.isFinite(context.nowMs), 'evaluation time');
+  if ('nowMs' in context) check(Number.isFinite(context.nowMs), 'freshness reference time');
+  if ('evaluationTimeMs' in context) {
+    check(Number.isSafeInteger(context.evaluationTimeMs) && context.evaluationTimeMs >= 0 &&
+      Number.isFinite(new Date(context.evaluationTimeMs).getTime()), 'explicit evaluation time');
+  }
   if ('maxAgeMs' in context) check(Number.isFinite(context.nowMs) && Number.isFinite(context.maxAgeMs) && context.maxAgeMs > 0, 'freshness context');
   if ('labelProhibitsInversion' in context) check(typeof context.labelProhibitsInversion === 'boolean', 'label context');
   assertProfile(e.effective_profile);
@@ -31,7 +35,15 @@ function validateEvidence(row) {
   for (const [field, source] of [['simulation_clock_at', 'demo'], ['forecast_valid_at', 'forecast'], ['observation_at', 'live']]) {
     check(t[field] === (row.source === source ? row.snapshot.timestamp : null), field);
   }
-  check(t.evaluated_at === null || iso(t.evaluated_at), 'independent evaluation time');
+  // Older v2 and externally evaluated records have unknown evaluation clocks.
+  // For newer built-in records the stored ISO instant MUST match the actual
+  // evaluation boundary context, not the action recording timestamp.
+  const explicitEvaluationAt=['demo','forecast'].includes(row.source) && 'evaluationTimeMs' in context
+    ? new Date(context.evaluationTimeMs).toISOString() : null;
+  check(t.evaluated_at === explicitEvaluationAt, 'independent evaluation time');
+  if(row.source==='demo' && explicitEvaluationAt!==null) {
+    check(t.evaluated_at===t.simulation_clock_at, 'deterministic demo evaluation clock');
+  }
   check(e.provenance === null || object(e.provenance), 'source provenance');
   if (e.provenance) {
     for (const key of ['issued_at', 'fetched_at']) if (key in e.provenance) check(e.provenance[key] === null || iso(e.provenance[key]), key);
