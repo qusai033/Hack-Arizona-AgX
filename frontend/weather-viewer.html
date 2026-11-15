@@ -43,12 +43,48 @@
         <p id="record-quality" class="quality" role="status"></p>
       </section>
     </section>
+
+    <section class="panel playback-panel" aria-labelledby="playback-title">
+      <div class="panel-head">
+        <div><p class="eyebrow">SYNTHETIC DATA PLAYBACK</p><h2 id="playback-title">Tucson sample timeline</h2></div>
+        <span id="playback-status" class="pill" role="status">Paused</span>
+      </div>
+      <p class="muted">Eight fixed example frames. Normal Play advances one simulated minute per real second. Faster settings change only the playback cadence; each tick still advances exactly one minute. This demonstration is isolated from the CanopyGuard evaluator and treatment workflow.</p>
+      <div class="playback-controls">
+        <label for="playback-speed">Playback speed
+          <select id="playback-speed">
+            <option value="1">1× — 1 simulated minute / second</option>
+            <option value="5">5× — 5 simulated minutes / second</option>
+            <option value="10">10× — 10 simulated minutes / second</option>
+          </select>
+        </label>
+        <div class="playback-buttons">
+          <button id="playback-play" type="button">Play</button>
+          <button id="playback-pause" type="button" disabled>Pause</button>
+          <button id="playback-step" type="button">Step +1 minute</button>
+          <button id="playback-reset" type="button">Reset</button>
+        </div>
+      </div>
+      <div class="playback-readouts" aria-live="polite">
+        <div><span>Simulated clock</span><strong id="playback-clock">00:00</strong></div>
+        <div><span>Frame</span><strong id="playback-frame">1 of 8</strong></div>
+        <div><span>Temperature</span><strong id="playback-temperature">76 °F</strong></div>
+        <div><span>Humidity</span><strong id="playback-humidity">28%</strong></div>
+        <div><span>Wind</span><strong id="playback-wind">6 mph</strong></div>
+      </div>
+      <p class="playback-meta"><span id="playback-speed-label">1× · 1 simulated minute per real second</span><span id="playback-event">No event recorded</span></p>
+      <ol id="playback-track" class="playback-track" aria-label="Eight synthetic timeline frames">
+        <li aria-current="step">00:00</li><li>00:01</li><li>00:02</li><li>00:03</li>
+        <li>00:04</li><li>00:05</li><li>00:06</li><li>00:07</li>
+      </ol>
+    </section>
+
     <section class="panel">
       <div class="panel-head"><div><p class="eyebrow">DATA QUALITY</p><h2>Record validation</h2></div><span id="quality-count" class="pill"></span></div>
       <p class="muted">Checks cover required fields, broad numeric bounds, duplicate IDs, timestamps, and a three-hour freshness window. A failed check is shown; missing values are never filled in.</p>
       <ul id="quality-list" class="quality-list"></ul>
     </section>
-    <footer>Independent viewer · No connection to application recommendations or the GO / CAUTION / STOP evaluator.</footer>
+    <footer>Independent viewer · Synthetic playback is a timing example only. No connection to application recommendations or the GO / CAUTION / STOP evaluator.</footer>
   </main>
 </body>
 </html>
