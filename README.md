@@ -20,12 +20,12 @@ Open `http://localhost:5173`. Serve over HTTP; do not open `index.html` as a `fi
 - Single-station versus multi-height comparison, using the supplied evaluation.
 - Responsive orchard SVG with thermal cap, trapped/rising droplets, two height markers, and wind compasses. Wind direction is meteorological **FROM**; arrows point **TO** the opposite bearing. Arrow length scales with speed and saturates at the display limit. The animation is illustrative, not a trajectory or dispersion model.
 - Sensor inspector, pause control, reduced-motion support, keyboard controls, and non-color status indicators.
-- Three explicit demo scenarios, volatility/nozzle selectors, JSON snapshot import.
+- Explicit simulated demo scenarios, pesticide-volatility/nozzle selectors, and JSON snapshot import.
 - 24-hour demo forecast with a derived GO-window callout, selectable periods, and per-period reasons.
 - Strict runtime contract validation and TypeScript interfaces.
 - Live adapter hooks with stale/missing/invalid data handling, profile evaluation pending/error states, and obsolete async-result rejection.
 
-The landing state is **SIMULATED DATA**, not a live field recommendation. `frontend/demo.js` supplies simulated observations to the shared synchronous engine in `frontend/engine/`. The engine implements the project screening rules; its generic profiles are not verified product labels or a validated commercial agronomic model. A coarse nozzle or low-volatility selection never clears an atmospheric hazard that exceeds the corresponding profile limits. Recorded high-volatility treatment alerts remain tied to the applied profile. The NWS module was not present in the repository; forecasts are explicitly labeled simulated until connected.
+The default landing state is **NWS-based modeled forecast screening**, not a live orchard sensor or an on-site spray clearance. Enter `?mode=demo` (or click **Try interactive demo**) for explicitly simulated observations and treatment actions. `frontend/demo.js` and the NWS forecast adapter both use the shared synchronous engine in `frontend/engine/`. Generic profiles are not verified product labels or scientifically validated field recommendations. A coarse nozzle or low-volatility selection never overrides atmospheric hazards exceeding the profile limits. Real sensor integrations must use an explicit live adapter.
 
 See [docs/FRONTEND_INTEGRATION.md](docs/FRONTEND_INTEGRATION.md) for connecting team modules. The shared snapshot shape is in [frontend/types.d.ts](frontend/types.d.ts); runtime checks are in [frontend/contract.js](frontend/contract.js).
 
@@ -82,3 +82,11 @@ The default location selection, startup request, 30-second refresh, stale-respon
 New audit records preserve the complete source snapshot, event ID, full treatment session and known evaluation context. Built-in demo/forecast records include the actual engine version, effective thresholds, diagnostics, and explicit recording versus observation/forecast-valid times; external/imported evaluations are labeled unverified rather than falsely attributed to the built-in engine. Existing v1 records stay readable with `evidence: null`, without invented historical metadata.
 
 See [docs/AUDIT_EVIDENCE.md](docs/AUDIT_EVIDENCE.md) for the field contract and replay tests, and [docs/AUDIT_INTEGRATION.md](docs/AUDIT_INTEGRATION.md) for the full-evidence PCA CSV schema and export behavior.
+
+## Forecast profile controls and treatment-session boundary
+
+In the default NWS view, **Screening preset**, **Pesticide volatility**, and **Nozzle droplet size** become available after a qualified NWS (or valid cached NWS) model loads. A profile change re-evaluates the displayed forecast period **and every available hourly period**, using the existing built-in decision engine. It updates the displayed risk, effective thresholds, next modeled GO window, and a version-2 audit event. The weather readings, selected city, source issuance/retrieval timestamps, and provenance remain unchanged by re-screening. The chosen profile is kept during in-page NWS refreshes and city changes; it resets to the default when the page is reloaded. A missing/stale forecast still fails closed.
+
+**No connected treatment session** is shown in non-demo modes. Demo-only Start/Finish/Previous treatment/Reset actions are hidden rather than presented as broken controls. The banner offers **Try interactive demo** and, in demo mode, **Return to NWS forecast**. The demo remains separate from real pesticide applications; no treatment is inferred from an NWS model.
+
+The NWS view models both heights from regional conditions: **no field sensor data or actual application history is claimed**. A modeled GO result is not authorization to spray. The imported snapshot mode remains read-only unless a verified live adapter offers `evaluateProfile`.
