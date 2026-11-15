@@ -12,6 +12,8 @@ test('dashboard communicates prototype limitations and ground-only blind spots',
 test('GO copy describes configured checks, not spray safety or clearance',async()=>{
  const app=await read('../frontend/app.js');
  assert.match(app,/GO — CONFIGURED WEATHER CHECKS PASSED/);
+ assert.match(app,/PROTOTYPE SCREENING STATUS/);
+ assert.doesNotMatch(app,/CANOPYGUARD RECOMMENDATION|CanopyGuard Says/);
  assert.doesNotMatch(app,/SAFE TO SPRAY NOW|Looks Safe/);
  assert.match(app,/Illustrative prototype preset/);
  assert.match(app,/Illustrative thresholds only; they are not validated product-label limits or application clearance/);
