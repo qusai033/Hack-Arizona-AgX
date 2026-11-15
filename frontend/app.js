@@ -10,7 +10,9 @@ import { monitorSession } from './engine/session.js';
 import { assertEvent, createEvent } from './events.js';
 import { createDemoState, reduceDemoState, lastFrame, AFTERNOON_REPLAY_TIME } from './demo-controller.js';
 import {createPlayback} from './playback.js';
+import { mountCanopyView } from './canopy-view.js';
 
+mountCanopyView(document.getElementById('canopy-view-slot'));
 const $ = id => document.getElementById(id);
 const titles = { GO:'SAFE TO SPRAY NOW', CAUTION:'CAUTION — MARGINAL DRIFT RISK', STOP:'DO NOT SPRAY — HIGH DRIFT RISK' };
 const icons = { GO:'✓', CAUTION:'!', STOP:'×' };
