@@ -8,6 +8,7 @@ import { validateForecast, nextWindow, formatTime } from './timeline.js';
 import { PROFILES, getProfile, thresholdsFor } from './engine/profiles.js';
 import { wetBulbDepression } from './engine/wet-bulb.js';
 import { monitorSession } from './engine/session.js';
+import { ENGINE_VERSION } from './engine/evaluate.js';
 import { assertEvent, createEvent } from './events.js';
 import { createDemoState, reduceDemoState, lastFrame, AFTERNOON_REPLAY_TIME } from './demo-controller.js';
 import {createPlayback} from './playback.js';
@@ -148,6 +149,40 @@ function renderSensor() {
   $('layer-note').textContent=deltas(snapshot).temperature>0?'Warm air sits above cooler ground air. The animation illustrates lateral drift beneath that cap.':'The upper sensor is no warmer than the lower sensor. Review every risk rule before acting.';
   document.querySelectorAll('[data-height]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.height===selectedHeight)));
 }
+/** UI indicators are backed by the actual internal evaluator only.
+ * A third-party live/imported result has no verified engine/quality provenance.
+ * VALID means input structure and optional explicit age checks passed, NOT
+ * an on-site sensor, verified forecast, or permission to spray.
+ */
+function renderDecisionMetadata(e) {
+  const box=$('decision-metadata');
+  box.replaceChildren();
+  const tag=(value,title)=>{
+    const node=document.createElement('span');
+    node.className='decision-meta-tag';
+    node.textContent=value;
+    if(title)node.title=title;
+    box.append(node);
+  };
+  if(mode!=='demo'&&mode!=='forecast'){
+    tag('Evaluator unverified');
+    tag('Input quality unverified');
+    tag('Rule provenance unavailable');
+    return;
+  }
+  const q=e.data_quality;
+  if(!q){tag('Evaluator metadata unavailable');tag('Input quality unknown');return;}
+  tag(`Engine ${ENGINE_VERSION}`,'Version of the built-in illustrative screening engine, not independent field verification');
+  tag(`Input ${q.overall_status}`,`Input checks: ${q.assessment}. Does not verify meteorological accuracy.`);
+  tag(`5 ft ${q.ground_5ft.status}`,q.ground_5ft.issues.join('; ')||'Required fields verified by input contract');
+  tag(`30 ft ${q.canopy_30ft.status}`,q.canopy_30ft.issues.join('; ')||'Required fields verified by input contract');
+  if(q.assessment==='STRUCTURE_ONLY')tag('Freshness not assessed','No observation freshness clock was supplied; future-valid NWS rows are not sensor observations');
+  const rules=e.triggered_rules;
+  const origin=[...new Set(rules.map(r=>r.provenance).filter(Boolean))];
+  tag(origin.length?`Rule origin: ${origin.join(' / ')}`:'No rules triggered',
+    'Illustrative screening thresholds are not verified product-label requirements');
+  if(mode==='forecast')tag('HEIGHTS MODELED','Regional NWS inputs do not measure the orchard at 5 ft and 30 ft');
+}
 function renderSnapshot() {
   invalid=false;
   $('error-message').hidden=true;
@@ -163,7 +198,13 @@ function renderSnapshot() {
   $('headline').textContent=e.headline_reason;
   $('decision-note').textContent=mode==='forecast'?'Estimated 5 ft/30 ft conditions from regional NWS forecast. NOT measured orchard conditions. Never treat forecast GO as spray clearance.':
     `Based on both heights · ${mode==='demo'?'Demonstration only':mode==='imported'?'Imported snapshot only':'Check on-site conditions before application'}`;
-  $('rules').innerHTML=e.triggered_rules.length?e.triggered_rules.map(r=>`<li class="rule-card ${r.severity}"><div class="rule-head"><h3>• ${esc(ruleNames[r.code]||r.code.replaceAll('_',' '))}</h3><span class="mini-status">${r.severity}</span></div><p class="rule-metric">${esc(r.metric)}</p><p>${esc(r.explanation)}</p></li>`).join(''):`<li class="rule-empty">${s==='GO'?'✓ No risk rules triggered in this evaluation.':'Review the headline recommendation; no individual rules were supplied.'}</li>`;
+  renderDecisionMetadata(e);
+  const trusted=mode==='demo'||mode==='forecast';
+  $('rules').innerHTML=e.triggered_rules.length?e.triggered_rules.map(r=>{
+    const origin=trusted&&r.provenance&&Array.isArray(r.source_heights)?
+      `<small class="rule-origin">Source heights: ${esc(r.source_heights.map(ft=>ft+' ft').join(', ')||'unavailable')} · Rule basis: ${esc(r.provenance)}</small>`:'';
+    return `<li class="rule-card ${r.severity}"><div class="rule-head"><h3>• ${esc(ruleNames[r.code]||r.code.replaceAll('_',' '))}</h3><span class="mini-status">${r.severity}</span></div><p class="rule-metric">${esc(r.metric)}</p><p>${esc(r.explanation)}</p>${origin}</li>`;
+  }).join(''):`<li class="rule-empty">${s==='GO'?'✓ No risk rules triggered in this evaluation.':'Review the headline: no individual rules were supplied.'}</li>`;
   $('ground-readings').innerHTML=readings(snapshot.readings.ground_5ft);
   $('canopy-readings').innerHTML=readings(snapshot.readings.canopy_30ft);
   $('ground-status').className=`result-badge ${e.single_station_5ft_status}`;
@@ -284,6 +325,7 @@ function fail(error) {
   $('decision-label').textContent='CANOPYGUARD · NO VERIFIED OBSERVATIONS';
   $('headline').textContent='A current recommendation cannot be verified.';
   $('decision-note').textContent='No valid spray decision is available.';
+  $('decision-metadata').textContent='Input quality unavailable · Evaluator unverified';
   $('error-message').textContent=error.message||String(error); $('error-message').hidden=false;
   $('rules').replaceChildren();
   for(const id of ['ground-readings','canopy-readings','ground-reason','delta-chips','sensor-details','monitor-risk']) $(id).replaceChildren();
