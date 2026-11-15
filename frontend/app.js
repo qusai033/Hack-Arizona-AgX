@@ -61,7 +61,11 @@ function publishSnapshot(action,{record=true,forceAlert=false,silentAlert=false}
   try{
     assertSnapshot(snapshot);
     renderSnapshot();
-    if(record&&!judgeGroundOnly)audit?.accept(snapshot,{source:mode,session,action,forceAlert,silentAlert,provenance:auditSourceProvenance(),
+    // The source evaluator owns this context. Never substitute the later
+    // action/recording wall clock for a paused or replayed evaluation.
+    const evaluationContext=mode==='demo'?currentDemo()?.evaluationContext??{}:
+      mode==='forecast'?weatherForecast?.evaluation_context??{}:{};
+    if(record&&!judgeGroundOnly)audit?.accept(snapshot,{source:mode,session,action,forceAlert,silentAlert,evaluationContext,provenance:auditSourceProvenance(),
       ...(mode==='demo'?{demo_run_id:demoState.demo_run_id}:{})});
   }catch(error){fail(error);return false;}
   if(forecast.length)try{renderForecast();}catch(error){clearForecast(`Forecast unavailable: ${error.message}`);}
