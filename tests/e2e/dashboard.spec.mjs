@@ -190,7 +190,7 @@ test('built demo preserves unique actions, idempotent events, v2 evidence, CSV c
   expect(latest.evidence.evaluation_context.session.ended_at).toBeTruthy();
 
   const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Export PCA Audit Log (CSV)', exact: true }).click();
+  await page.getByRole('button', { name: 'Export Activity Log (CSV)', exact: true }).click();
   const csv = parseCsv(await saveDownload(await downloadPromise, testInfo, 'audit.csv'));
   expect(csv.length).toBeGreaterThan(1);
   const header = csv[0];
@@ -282,7 +282,7 @@ test('dismissed alerts recur on a new risky transition and both demo reset contr
   await expect(drawer).toBeHidden();
 
   await page.locator('[data-scenario="clear"]').click();
-  await expect(page.locator('#decision-title')).toContainText('SAFE TO SPRAY');
+  await expect(page.locator('#decision-title')).toContainText('GO — CONFIGURED WEATHER CHECKS PASSED');
   await page.locator('[data-scenario="trap"]').click();
   await expect(page.locator('#decision-title')).toContainText('DO NOT SPRAY');
   await expect(drawer).toBeVisible();
