@@ -1,5 +1,6 @@
 import { assertSnapshot, deltas } from './contract.js';
 import { assertEvent } from './events.js';
+import { buildAuditEvidence, normalizeAuditRecord, AUDIT_SCHEMA_VERSION } from './audit-record.js';
 
 const PREFIX = 'canopyguard.audit.v1.';
 export function createAuditLog(storage, {clock = () => new Date(), id = () => crypto.randomUUID()} = {}) {
@@ -13,7 +14,7 @@ export function createAuditLog(storage, {clock = () => new Date(), id = () => cr
         const record = JSON.parse(storage.getItem(PREFIX + eventId));
         if (record?.id === eventId && Number.isFinite(Date.parse(record.recorded_at))) {
           assertSnapshot(record.snapshot);
-          return structuredClone(record);
+          return normalizeAuditRecord(record);
         }
       } catch { /* list() also ignores malformed records; storage remains best effort. */ }
     }
@@ -29,7 +30,7 @@ export function createAuditLog(storage, {clock = () => new Date(), id = () => cr
             const record = JSON.parse(storage.getItem(key));
             if (typeof record?.id==='string' && key === PREFIX + record.id && Number.isFinite(Date.parse(record.recorded_at))) {
               assertSnapshot(record.snapshot);
-              records.set(record.id, record);
+              records.set(record.id, normalizeAuditRecord(record));
             }
           } catch { /* Ignore malformed stored entries. */ }
         }
@@ -39,7 +40,8 @@ export function createAuditLog(storage, {clock = () => new Date(), id = () => cr
     return [...records.values()].sort((a,b)=>a.recorded_at.localeCompare(b.recorded_at)||
       (a.sequence_number??0)-(b.sequence_number??0)||a.id.localeCompare(b.id)).map(row=>structuredClone(row));
   }
-  function append(snapshot, {event='tick', source='unknown', session=null, action}={}) {
+  function append(snapshot, {event='tick', source='unknown', session=null, action,
+    evaluationContext={}, provenance=null}={}) {
     if (action) assertEvent(action);
     const eventId = action?.event_id ?? id();
     const existing = get(eventId);
@@ -49,8 +51,12 @@ export function createAuditLog(storage, {clock = () => new Date(), id = () => cr
     }
     assertSnapshot(snapshot);
     if(!sequence)list();
-    const record = { id:eventId, event_id:eventId, sequence_number:++sequence, recorded_at:action?.recorded_at ?? clock().toISOString(),
-      event:action?.event_type ?? event, source, session:structuredClone(session), snapshot:structuredClone(snapshot) };
+    const recorded_at=action?.recorded_at ?? clock().toISOString();
+    const evidence=buildAuditEvidence(snapshot,{source,session,evaluationContext,provenance,recordedAt:recorded_at});
+    const record = { schema_version:AUDIT_SCHEMA_VERSION, id:eventId, event_id:eventId,
+      sequence_number:++sequence, recorded_at,
+      event:action?.event_type ?? event, source, session:structuredClone(session),
+      snapshot:structuredClone(snapshot), evidence };
     const key = PREFIX + record.id;
     if (memory.has(record.id)) throw new Error('Duplicate audit record ID');
     if (storage) {
