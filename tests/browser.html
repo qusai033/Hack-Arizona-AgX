@@ -1,7 +1,8 @@
 <!doctype html><html lang="en"><meta charset="utf-8"><title>CanopyGuard browser QA</title><style>body{font:14px system-ui;background:#e8ece5;color:#183c32;margin:20px}button{padding:12px}#frames{display:flex;gap:20px;align-items:flex-start}iframe{border:1px solid #86977e;background:white;height:820px;flex-shrink:0}pre{white-space:pre-wrap}h1{font-size:21px}</style>
-<h1>Responsive and adapter QA · development only</h1><button id="run">Run adapter checks</button><pre id="results">Ready</pre><div id="frames"><iframe id="phone" title="390 px phone layout" src="/" width="390"></iframe><iframe id="tablet" title="768 px tablet layout" src="/" width="768"></iframe></div>
+<h1>Responsive and adapter QA · development only</h1><button id="run">Run adapter checks</button><pre id="results">Ready</pre><div id="frames"><iframe id="phone" title="390 px phone layout" src="/?mode=demo" width="390"></iframe><iframe id="tablet" title="768 px tablet layout" src="/?mode=demo" width="768"></iframe></div>
 <script type="module">
 import {scenario} from '/demo.js';
+import {createEvent} from '/events.js';
 const output=document.getElementById('results'),frame=document.getElementById('phone');
 const assert=(value,label)=>{if(!value)throw new Error(label);output.textContent+='PASS '+label+'\n';};
 const live=()=>({...scenario('clear'),timestamp:new Date().toISOString()});
@@ -41,7 +42,47 @@ document.getElementById('run').onclick=async()=>{
   api.useDemo('trap');assert(d.getElementById('decision-title').textContent.includes('DO NOT SPRAY'),'New hazard is shown while spraying');
   d.getElementById('session-finish').click();assert(d.getElementById('session-state').textContent==='POST SPRAY CURING','Finishing session starts post-spray monitoring');
   d.getElementById('session-reset').click();
+  const logs=()=>w.CanopyGuardAudit.list();
+  const selectProfile=value=>{preset.value=value;preset.dispatchEvent(new w.Event('change'));};
+  api.useDemo('trap');selectProfile('contact_fungicide');
+  let count=logs().length;
+  selectProfile('dormant_oil');selectProfile('contact_fungicide');
+  assert(logs().length===count+2,'Two identical-result profile changes are both recorded');
+  assert(logs().slice(-2).map(r=>r.snapshot.pesticide_profile.name).join('|')==='Dormant Horticultural Oil|Standard Contact Fungicide','Recorded profiles retain their own evidence and order');
+  count=logs().length;
+  d.getElementById('audit-record').click();d.getElementById('audit-record').click();
+  assert(logs().length===count+2,'Two intentional manual records while paused are distinct');
+  assert(logs().at(-1).snapshot.timestamp===logs().at(-2).snapshot.timestamp,'Manual recording does not advance simulation time');
+  const tick=createEvent('SIMULATION_TICK');count=logs().length;
+  assert(api.dispatchDemoEvent(tick)===true,'New tick is processed');
+  const tickTime=logs().at(-1).snapshot.timestamp;
+  assert(api.dispatchDemoEvent(tick)===false&&logs().length===count+1&&logs().at(-1).snapshot.timestamp===tickTime,'Reprocessing one tick changes neither time nor log twice');
+  count=logs().length;api.useDemo('trap');
+  assert(logs().length===count+1,'One scenario selection creates exactly one audit event');
+  api.useDemo('clear');api.dispatchDemoEvent(createEvent('FRAME_SELECTED',{minute:60}));
+  d.getElementById('session-start').click();const started=api.getSession().started_at;
+  api.useDemo('trap');
+  assert(d.getElementById('error-message').hidden&&api.getSession().started_at===started,'Scenario switch after minute 60 preserves the active treatment without an error');
+  assert(Date.parse(logs().at(-1).snapshot.timestamp)===Date.parse(started)+60000,'Scenario switch advances simulation time by exactly 60 seconds');
+  d.getElementById('session-finish').click();const completed=JSON.stringify(api.getSession());
+  api.useDemo('clear');
+  assert(d.getElementById('error-message').hidden&&JSON.stringify(api.getSession())===completed,'Scenario switch preserves completed treatment evidence');
+  const normalTime=logs().at(-1).snapshot.timestamp;
+  d.querySelector('[data-judge="3"]').click();
+  assert(d.getElementById('rules').textContent.includes('Post-spray volatility alert'),'Judge afternoon replay still produces the post-spray alert');
+  assert(d.getElementById('next-window').textContent.includes('9:00 AM')&&d.getElementById('next-window').textContent.includes('Bundled morning replay'),'Judge forecast remains anchored to its morning replay');
+  d.getElementById('judge-exit').click();
+  assert(logs().at(-1).snapshot.timestamp===normalTime&&JSON.stringify(api.getSession())===completed,'Exiting judge replay restores the normal simulation clock and treatment');
+  api.dispatchDemoEvent(createEvent('FRAME_SELECTED',{minute:1440}));
+  assert(/No GO window|unavailable/.test(d.getElementById('next-window').textContent),'Advancing time removes the expired morning forecast window immediately');
+  const pausedTime=logs().at(-1).snapshot.timestamp;
+  await new Promise(r=>setTimeout(r,120));
+  assert(logs().at(-1).snapshot.timestamp===pausedTime,'Paused simulation time stays frozen');
+  await new Promise(resolve=>{frame.addEventListener('load',resolve,{once:true});frame.contentWindow.location.reload();});
+  const reopened=frame.contentWindow,reopenedCount=reopened.CanopyGuardAudit.list().length;
+  const reopenedClock=frame.contentDocument.getElementById('weather-clock').textContent;
+  assert(reopened.CanopyGuard.dispatchDemoEvent(tick)===false&&reopened.CanopyGuardAudit.list().length===reopenedCount&&frame.contentDocument.getElementById('weather-clock').textContent===reopenedClock,'Redelivery after reload neither advances the fresh demo nor duplicates stored evidence');
   output.textContent+='ALL BROWSER CHECKS PASSED';
- }catch(error){output.textContent+='FAIL '+error.message;api.useDemo('trap');}
+ }catch(error){output.textContent+='FAIL '+error.message;frame.contentWindow.CanopyGuard.useDemo('trap');}
 };
 </script></html>

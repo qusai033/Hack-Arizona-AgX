@@ -1,12 +1,13 @@
 import { deltas, escapeHTML as esc, signed } from './contract.js';
 import { auditCSV, createAuditLog, filterRecords, hiddenRisk, localDate, reasons, alertText } from './audit.js';
+import { assertEvent, createEvent } from './events.js';
 
-export function mountAudit({zone=()=> 'America/Los_Angeles'}={}) {
+export function mountAudit({zone=()=> 'America/Los_Angeles', onRecordSnapshot}={}) {
   let storage;
   try {storage=window.localStorage;} catch {}
   const log=createAuditLog(storage);
   const $=id=>document.getElementById(id);
-  let current, previous, filter='all', lastLoggedAt=0, queued, toastTimer, externalDispatch;
+  let current, previous, filter='all', queued, toastTimer, externalDispatch;
   const table=$('audit-rows'), dialog=$('alert-dialog'), drawer=$('alert-drawer');
   function setFilter(value) {
     filter=value;
@@ -50,23 +51,25 @@ export function mountAudit({zone=()=> 'America/Los_Angeles'}={}) {
       Promise.resolve().then(()=>externalDispatch({ ...alert, message, log_id:record.id, recipients:['Applicator','PCA'] })).catch(()=>$('audit-delivery').textContent='External alert delivery failed. The audit record was saved.');
     }
   }
-  function accept(snapshot, {source, session=null, event='observation', forceAlert=false}={}) {
+  function accept(snapshot, {source, session=null, action, forceAlert=false}={}) {
+    assertEvent(action);
+    const existing = log.get(action.event_id);
+    if (existing) return existing;
+    const row=log.append(snapshot,{source,session,action});
     current={snapshot:structuredClone(snapshot),source,session:structuredClone(session)};
+    $('audit-record').disabled=false;
+    $('alert-test').disabled=false;
     const e=snapshot.evaluation,post=e.triggered_rules.some(rule=>rule.code==='POST_SPRAY_VOLATILITY_ALERT');
     const signature=JSON.stringify([source,snapshot.orchard_block,snapshot.scenario_name,e.multi_height_status,post,session?.state]);
     const changed=previous!==signature;
     previous=signature;
-    const now=Date.now();
-    if(!changed && event==='observation' && now-lastLoggedAt<15000 && !forceAlert)return;
-    const row=log.append(snapshot,{source,session,event:changed&&event==='observation'?'transition':event});
-    lastLoggedAt=now;
     if((changed||forceAlert)&&e.multi_height_status!=='GO') notify(row);
     clearTimeout(queued);
     queued=setTimeout(render,100);
     return row;
   }
   const heartbeat=setInterval(()=>{
-    if(current)accept(current.snapshot,{...current,event:'periodic tick'});
+    if(current?.source==='live')accept(current.snapshot,{...current,action:createEvent('PERIODIC_RECORD')});
   },15000);
   function download() {
     const data=auditCSV(filterRecords(log.list(),filter),zone());
@@ -90,16 +93,20 @@ export function mountAudit({zone=()=> 'America/Los_Angeles'}={}) {
   document.querySelectorAll('[data-audit-filter]').forEach(button=>button.addEventListener('click',()=>setFilter(button.dataset.auditFilter)));
   $('audit-download').addEventListener('click',download);
   $('audit-report').addEventListener('click',printReport);
+  $('audit-record').addEventListener('click',()=>{if(current)onRecordSnapshot?.();});
   $('alert-close-drawer').addEventListener('click',()=>{drawer.hidden=true;});
   $('alert-test').addEventListener('click',()=>{
     if(current){
-      const row=log.append(current.snapshot,{...current,event:'notification test'});
+      const action=createEvent('NOTIFICATION_TEST');
+      const row=log.append(current.snapshot,{...current,action});
       notify(row,{test:true,modal:true});render();
     }
   });
   window.addEventListener('storage',event=>{if(event.key?.startsWith('canopyguard.audit.v1.'))render();});
   render();
-  return Object.freeze({accept,download,setFilter,list:log.list,suspend:()=>{current=null;previous=null;},setDispatcher:fn=>{
+  return Object.freeze({accept,download,setFilter,list:log.list,hasEvent:id=>Boolean(log.get(id)),suspend:()=>{
+    current=null;previous=null;$('audit-record').disabled=true;$('alert-test').disabled=true;
+  },setDispatcher:fn=>{
     if(fn!==null&&typeof fn!=='function')throw new TypeError('Provide a dispatcher callback or null');
     externalDispatch=fn;
   },dispose:()=>clearInterval(heartbeat)});
