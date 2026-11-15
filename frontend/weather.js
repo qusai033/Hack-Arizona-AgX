@@ -166,3 +166,5 @@ export async function loadOrchardForecast(id, profile, {nowMs=Date.now(), fetchI
   validateForecast(snapshots,60);
   return {location_id:id,location_label:location.label,source,fetched_at,error,time_zone:location.zone,interval_minutes:60,snapshots,window:forecastWindow(snapshots,nowMs,location.zone)};
 }
+
+# Automated fix for issue #7: Refresh forecast windows when simulation time advances
