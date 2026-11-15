@@ -62,6 +62,19 @@ function validateEvidence(row) {
   check(e.effective_thresholds.minWind <= e.effective_thresholds.maxWind, 'wind bounds');
   const d = e.diagnostics;
   check(object(d) && d.engine_version === e.engine_version && equal(d.thresholds, e.effective_thresholds), 'engine diagnostics');
+  // New v2 records must preserve the evaluator's actual independent height
+  // quality. Historical v2 records without this field remain valid and are
+  // never rewritten or inferred from source timestamps.
+  const actualQuality=row.snapshot.evaluation.data_quality;
+  if(actualQuality!==undefined||d.data_quality!==undefined){
+    check(actualQuality!==undefined&&equal(actualQuality,d.data_quality), 'per-height quality evidence');
+    const expectedTime='evaluationTimeMs' in context?new Date(context.evaluationTimeMs).toISOString():null;
+    check(actualQuality.evaluated_at===expectedTime,'evaluator-boundary quality time');
+    if(context.nowMs!==undefined){
+      check(actualQuality.assessment==='STRUCTURE_AND_AGE' &&
+        actualQuality.age_ms===context.nowMs-Date.parse(row.snapshot.timestamp),'explicit observation age');
+    }
+  }
   for (const key of ['inversion_delta_f', 'speed_shear_mph', 'signed_speed_delta_mph', 'direction_shear_deg']) check(Number.isFinite(d[key]), `diagnostic ${key}`);
   check(object(d.wet_bulb), 'wet-bulb diagnostics');
   for (const height of ['ground_5ft', 'canopy_30ft']) {
