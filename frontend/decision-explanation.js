@@ -42,6 +42,31 @@ function check(label,measured,configured,relevantRules,sources,note){
     <div class="evidence-references">Evidence for the physical concern: ${references}</div>
   </article>`;
 }
+function inputValidity(quality,rules){
+  const failed=rules.some(rule=>rule.severity==='STOP')||quality?.overall_status==='INVALID_OR_STALE';
+  const passed=!failed&&quality?.overall_status==='VALID'&&
+    quality.ground_5ft?.status==='VALID'&&quality.canopy_30ft?.status==='VALID'&&
+    ['STRUCTURE_ONLY','STRUCTURE_AND_AGE'].includes(quality.assessment);
+  const status=failed?'STOP':passed?'PASSED':'UNVERIFIED';
+  const title=failed?'Input checks failed':passed?'Input checks passed':'Input checks unverified';
+  const labels={VALID:'checks passed',INVALID:'invalid data',STALE:'stale data',FUTURE:'future-dated data'};
+  const layer=key=>labels[quality?.[key]?.status]||'not verified';
+  const reasons=rules.map(rule=>rule.explanation).filter(Boolean).join(' ');
+  const result=failed?
+    `Overall decision: STOP. ${reasons||'Input validation failed; check the data and evaluation context.'}`:
+    passed?'No input-validation problems were found. Weather checks below determine the screening result.':
+      'A complete input-validation result is unavailable.';
+  return `<article class="evidence-check" data-evidence-check="Input validity" data-evidence-status="${status}">
+    <div class="evidence-check-head"><h4>Input validity</h4><span class="evidence-check-status ${status}">${title}</span></div>
+    <p class="evidence-measured">${esc(result)}</p>
+    <p>5 ft: ${esc(layer('ground_5ft'))}; 30 ft: ${esc(layer('canopy_30ft'))}.</p>
+    <p class="evidence-note">Passing input checks does not verify sensor calibration, on-site measurements, or application safety.</p>
+    <details class="evidence-input-policy">
+      <summary>How input checks affect the decision</summary>
+      <p>Missing or invalid inputs, invalid evaluation context, or observations that fail an explicitly clocked freshness check set the overall decision to STOP. This is CanopyGuard's data-integrity policy.</p>
+    </details>
+  </article>`;
+}
 const decisionTitle={GO:'Configured checks passed',CAUTION:'One or more caution rules triggered',STOP:'One or more stop rules or input-integrity checks triggered'};
 function verdict(e){
   const stop=e.triggered_rules.filter(r=>r.severity==='STOP').length;
@@ -72,11 +97,9 @@ export function decisionExplanation(snapshot,{mode='demo'}={}){
   const inputNote=quality?.assessment==='STRUCTURE_ONLY'?'Input structure checked; observation freshness NOT assessed.':
     quality?.assessment==='STRUCTURE_AND_AGE'?'Input structure and explicitly clocked observation age checked.':
     'Input quality or observation freshness not verified.';
-  const qualityText=quality?`${quality.overall_status}; 5 ft: ${quality.ground_5ft.status}; 30 ft: ${quality.canopy_30ft.status}`:'Unavailable';
   const qualityRules=rulesFor(rules,['DATA_INVALID']);
   const cards=[
-    check('Input validity',qualityText,'Invalid or stale decision inputs fail closed as STOP.',qualityRules,
-      ['EPA_LABELS'],'Data VALID means input checks passed—not calibrated accuracy, observed sensors, or safe application.'),
+    inputValidity(quality,qualityRules),
     check('Wind at both heights',`5 ft ${val(g.wind_speed_mph)} mph; 30 ft ${val(c.wind_speed_mph)} mph`,
       `Wind below ${val(t.minWind)} mph or above ${val(t.maxWind)} mph: STOP; wind above ${val(t.windCautionAbove)} mph: CAUTION where no STOP applies.`,
       rulesFor(rules,['GROUND_WIND_TOO_CALM','GROUND_WIND_EXCEEDED','GROUND_WIND_CAUTION','UPPER_WIND_TOO_CALM','UPPER_WIND_EXCEEDED','UPPER_WIND_CAUTION']),
@@ -111,5 +134,5 @@ export function decisionExplanation(snapshot,{mode='demo'}={}){
     <p class="evidence-data-note">${esc(context)} ${esc(inputNote)}</p>
     <div class="evidence-check-grid">${cards.join('')}</div>
     <p class="evidence-hidden"><strong>Why compare 5 ft and 30 ft?</strong> ${esc(caught)}</p>
-    <p class="evidence-limit"><strong>Important:</strong> Sources above establish environmental drift mechanisms; they DO NOT validate the project's inversion, shear, heat/humidity or treatment-monitoring cutoff values. These are transparent, configurable illustrative screening assumptions. Actual product label restrictions, sensitive receptors, gusts, nozzle setup, buffers and field verification are outside this evaluation. A modeled or demo GO is never spray clearance.</p>`;
+    <p class="evidence-limit"><strong>Important:</strong> Sources above establish environmental drift mechanisms; they DO NOT validate the project's inversion, shear, heat/humidity or treatment-monitoring cutoff values. These are transparent, configurable illustrative screening assumptions. Actual product label restrictions, sensitive receptors, gusts, nozzle setup, buffers and field verification are outside this evaluation. A modeled or demo GO is never spray clearance. Product-label requirements: ${sourceLink('EPA_LABELS')}.</p>`;
 }
