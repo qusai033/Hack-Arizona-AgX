@@ -41,6 +41,9 @@ test('stale observations show the actual STOP failure and per-height states',()=
   assert.match(card,/5 ft: stale data; 30 ft: stale data/);
   assert.ok(card.includes(snapshot.evaluation.triggered_rules[0].explanation));
   assert.doesNotMatch(card,/Input checks passed/);
+  const html=decisionExplanation(snapshot);
+  assert.equal((html.match(/data-evidence-status="NOT_EVALUATED"/g)||[]).length,5);
+  assert.doesNotMatch(html,/data-evidence-status="PASSED"/);
 });
 
 test('invalid evaluation context cannot be labeled passed when both readings are valid',()=>{
@@ -79,10 +82,11 @@ test('GO explanation shows actual wind, gradient, zero triggered rules and no cl
   assert.match(html,/Actual triggered rules: 0 STOP and 0 CAUTION/);
   assert.match(html,/5 ft 5\.0 mph; 30 ft 5\.0 mph/);
   assert.match(html,/30 ft minus 5 ft = −?\-?1\.0°F/);
-  assert.match(html,/No rule triggered/);
+  assert.equal((html.match(/>Check passed</g)||[]).length,5);
+  assert.doesNotMatch(html,/No rule triggered/);
   assert.match(html,/never certifies that spraying is safe/);
   assert.match(html,/SIMULATED demo readings/);
-  assert.match(html,/observation freshness NOT assessed/);
+  assert.match(html,/Demo timestamps use the simulation clock/);
   assert.match(html,/illustrative CanopyGuard cutoff/);
 });
 
@@ -109,6 +113,8 @@ test('CAUTION explains weak inversion and configured thresholds without claiming
   assert.equal(s.evaluation.multi_height_status,'CAUTION');
   assert.match(html,/1 CAUTION/);
   assert.match(html,/MODELED estimates/);
+  assert.match(html,/NWS forecast issuance age is checked separately/);
+  assert.match(html,/Sensor-observation age does not apply/);
   assert.match(html,/greater than 1\.0°F/);
   assert.match(html,/data-evidence-status="CAUTION"/);
   assert.match(html,/NOT validate the project's inversion, shear/);

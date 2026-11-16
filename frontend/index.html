@@ -45,18 +45,18 @@
       <div class="decision-icon" id="decision-icon" aria-hidden="true">×</div><div class="decision-copy"><p class="decision-label" id="decision-label">CANOPYGUARD · DATA PENDING</p><h2 id="decision-title">DATA UNAVAILABLE — DO NOT SPRAY</h2><p id="headline"></p><span class="decision-note" id="decision-note">Based on both sensor heights · Demonstration only</span><div id="decision-metadata" class="decision-metadata" aria-label="Evaluator, input quality, and screening-rule provenance" role="group"></div></div>
     </section>
     <div id="error-message" class="error-message" role="alert" hidden></div>
+    <section class="comparison-section" aria-labelledby="comparison-title"><div class="section-heading"><div><p class="eyebrow">MULTI-HEIGHT SCREENING</p><h2 id="comparison-title">Ground &amp; canopy conditions</h2></div><span class="section-meta">5 ft / 30 ft comparison</span></div>
+      <div class="comparison-grid"><article class="station-card ground-card"><div class="card-heading"><span class="station-icon" aria-hidden="true">⌁</span><div><p class="eyebrow">GROUND LEVEL</p><h3>5 ft Ground-Level Conditions</h3></div><span class="height-tag">5 FT</span></div><div class="readings-row" id="ground-readings"></div><div id="ground-status" class="result-badge"></div><p id="ground-reason" class="card-footnote"></p><div class="ground-limitations"><strong>Unobservable from 5 ft</strong><ul><li>Inversion gradient between 5 ft and 30 ft</li><li>Upper-canopy wind speed and direction</li><li>Vertical and directional wind shear between heights</li></ul></div></article>
+      <article class="station-card canopy-card"><div class="card-heading"><span class="station-icon shield-small" aria-hidden="true">✓</span><div><p class="eyebrow">ABOVE THE CANOPY</p><h3>CanopyGuard Multi-Height</h3></div><span class="height-tag">5 + 30 FT</span></div><div class="readings-row" id="canopy-readings"></div><div id="canopy-status" class="result-badge"></div><div class="delta-chips" id="delta-chips"></div></article></div>
+    </section>
+    <ul id="rules" class="rules" aria-label="Triggered risk rules"></ul>
     <section id="decision-explanation" class="decision-explanation" aria-label="Evidence behind the current weather-screening status">
-      <details id="decision-explanation-details" open>
-        <summary>How was this weather-screening decision reached? <span>Checks, readings, and research sources</span></summary>
+      <details id="decision-explanation-details">
+        <summary>View screening checks and sources <span>Readings, thresholds, and research references</span></summary>
         <div id="decision-explanation-body" class="decision-explanation-body">
           <p>Decision information is unavailable until a weather evaluation has been loaded.</p>
         </div>
       </details>
-    </section>
-    <ul id="rules" class="rules" aria-label="Triggered risk rules"></ul>
-    <section class="comparison-section" aria-labelledby="comparison-title"><div class="section-heading"><div><p class="eyebrow">MULTI-HEIGHT SCREENING</p><h2 id="comparison-title">Ground &amp; canopy conditions</h2></div><span class="section-meta">5 ft / 30 ft comparison</span></div>
-      <div class="comparison-grid"><article class="station-card ground-card"><div class="card-heading"><span class="station-icon" aria-hidden="true">⌁</span><div><p class="eyebrow">GROUND LEVEL</p><h3>5 ft Ground-Level Conditions</h3></div><span class="height-tag">5 FT</span></div><div class="readings-row" id="ground-readings"></div><div id="ground-status" class="result-badge"></div><p id="ground-reason" class="card-footnote"></p><div class="ground-limitations"><strong>Unobservable from 5 ft</strong><ul><li>Inversion gradient between 5 ft and 30 ft</li><li>Upper-canopy wind speed and direction</li><li>Vertical and directional wind shear between heights</li></ul></div></article>
-      <article class="station-card canopy-card"><div class="card-heading"><span class="station-icon shield-small" aria-hidden="true">✓</span><div><p class="eyebrow">ABOVE THE CANOPY</p><h3>CanopyGuard Multi-Height</h3></div><span class="height-tag">5 + 30 FT</span></div><div class="readings-row" id="canopy-readings"></div><div id="canopy-status" class="result-badge"></div><div class="delta-chips" id="delta-chips"></div></article></div>
     </section>
     <div id="canopy-view-slot"></div>
     <section class="profile-panel" aria-labelledby="profile-title">

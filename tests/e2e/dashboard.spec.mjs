@@ -886,11 +886,11 @@ test('SPEC-BADGES: demo displays real evaluator version, per-height quality and 
   await expect(page.locator('#decision-metadata')).toContainText('Input VALID');
   await expect(page.locator('#decision-metadata')).toContainText('5 ft VALID');
   await expect(page.locator('#decision-metadata')).toContainText('30 ft VALID');
-  await expect(page.locator('#decision-metadata')).toContainText('Freshness not assessed');
+  await expect(page.locator('#decision-metadata')).toContainText('Simulation clock');
   await expect(page.locator('#decision-metadata')).toContainText('ILLUSTRATIVE_THRESHOLD');
   await expect(page.locator('.rule-origin').first()).toContainText('Source heights:');
   await page.locator('[data-scenario="clear"]').click();
-  await expect(page.locator('#decision-metadata')).toContainText('No rules triggered');
+  await expect(page.locator('#decision-metadata')).toContainText('Weather checks passed');
   expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
 });
@@ -928,7 +928,14 @@ test('NWS model badges distinguish valid input structure from verified orchard s
   await expect(page.locator('#weather-network')).toContainText('NWS model retrieved',{timeout:20000});
   await expect(page.locator('#decision-metadata')).toContainText('Input VALID');
   await expect(page.locator('#decision-metadata')).toContainText('HEIGHTS MODELED');
-  await expect(page.locator('#decision-metadata')).toContainText('Freshness not assessed');
+  await expect(page.locator('#decision-metadata')).toContainText('NWS issue age checked');
+  await expect(page.locator('#decision-metadata')).toContainText('No orchard sensors connected');
+  await expect(page.locator('#decision-metadata')).not.toContainText('Freshness not assessed');
+  await expect(page.locator('#decision-explanation-details')).not.toHaveAttribute('open','');
+  await expect(page.locator('#ground-readings')).toContainText('°F');
+  await expect(page.locator('#canopy-readings')).toContainText('°F');
+  expect(await page.evaluate(()=>Boolean(document.querySelector('.comparison-section')
+    .compareDocumentPosition(document.getElementById('decision-explanation'))&Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
   const record=await page.evaluate(()=>window.CanopyGuardAudit.list().filter(row=>row.source==='forecast').at(-1));
   expect(record.evidence.engine_version).toBeTruthy();
   await expect(page.locator('#decision-metadata')).toContainText(record.evidence.engine_version);
@@ -949,6 +956,8 @@ test('research-backed decision explainer reflects GO and STOP evaluator outputs 
   await page.goto('/?mode=demo');
   const panel=page.locator('#decision-explanation');
   await expect(panel).toBeVisible();
+  await expect(page.locator('#decision-explanation-details')).not.toHaveAttribute('open','');
+  await page.locator('#decision-explanation-details > summary').click();
   await expect(page.locator('#decision-explanation-details')).toHaveAttribute('open','');
   await expect(panel).toContainText('The most severe rule determines the overall status');
   await expect(panel).toContainText('SIMULATED demo readings');

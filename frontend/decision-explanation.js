@@ -28,14 +28,18 @@ const sourceLink=id=>{
 };
 const val=x=>Number.isFinite(x)?Number(x).toFixed(1):'unavailable';
 const statusOf=rules=>rules.some(r=>r.severity==='STOP')?'STOP':
-  rules.some(r=>r.severity==='CAUTION')?'CAUTION':'NO RULE';
+  rules.some(r=>r.severity==='CAUTION')?'CAUTION':'PASSED';
 const rulesFor=(rules,codes)=>rules.filter(r=>codes.includes(r.code));
-function check(label,measured,configured,relevantRules,sources,note){
-  const result=statusOf(relevantRules);
-  const statusText=result==='NO RULE'?'No rule triggered':result;
+const inputChecksPassed=(quality,rules)=>quality?.overall_status==='VALID'&&
+  quality.ground_5ft?.status==='VALID'&&quality.canopy_30ft?.status==='VALID'&&
+  ['STRUCTURE_ONLY','STRUCTURE_AND_AGE'].includes(quality.assessment)&&
+  !rules.some(rule=>rule.code==='DATA_INVALID');
+function check(label,measured,configured,relevantRules,sources,note,evaluated){
+  const result=evaluated?statusOf(relevantRules):'NOT_EVALUATED';
+  const statusText=result==='PASSED'?'Check passed':result==='NOT_EVALUATED'?'Not evaluated':result;
   const references=sources.map(sourceLink).join(' · ');
   return `<article class="evidence-check" data-evidence-check="${esc(label)}" data-evidence-status="${result}">
-    <div class="evidence-check-head"><h4>${esc(label)}</h4><span class="evidence-check-status ${result==='NO RULE'?'NEUTRAL':result}">${statusText}</span></div>
+    <div class="evidence-check-head"><h4>${esc(label)}</h4><span class="evidence-check-status ${result}">${statusText}</span></div>
     <p class="evidence-measured"><strong>Input:</strong> ${esc(measured)}</p>
     <p><strong>Screening rule:</strong> ${esc(configured)}</p>
     <p class="evidence-note">${esc(note)}</p>
@@ -44,9 +48,7 @@ function check(label,measured,configured,relevantRules,sources,note){
 }
 function inputValidity(quality,rules){
   const failed=rules.some(rule=>rule.severity==='STOP')||quality?.overall_status==='INVALID_OR_STALE';
-  const passed=!failed&&quality?.overall_status==='VALID'&&
-    quality.ground_5ft?.status==='VALID'&&quality.canopy_30ft?.status==='VALID'&&
-    ['STRUCTURE_ONLY','STRUCTURE_AND_AGE'].includes(quality.assessment);
+  const passed=!failed&&inputChecksPassed(quality,rules);
   const status=failed?'STOP':passed?'PASSED':'UNVERIFIED';
   const title=failed?'Input checks failed':passed?'Input checks passed':'Input checks unverified';
   const labels={VALID:'checks passed',INVALID:'invalid data',STALE:'stale data',FUTURE:'future-dated data'};
@@ -94,35 +96,38 @@ export function decisionExplanation(snapshot,{mode='demo'}={}){
   const quality=e.data_quality;
   const context=mode==='forecast'?'Regional NWS heights are MODELED estimates, not measured orchard observations.':
     'SIMULATED demo readings, not measured orchard observations.';
-  const inputNote=quality?.assessment==='STRUCTURE_ONLY'?'Input structure checked; observation freshness NOT assessed.':
+  const inputNote=quality?.assessment==='STRUCTURE_ONLY'?(mode==='forecast'?
+    'Input structure checked. NWS forecast issuance age is checked separately before display. Sensor-observation age does not apply to modeled forecast heights.':
+    'Input structure checked. Demo timestamps use the simulation clock; they are not current sensor observations.'):
     quality?.assessment==='STRUCTURE_AND_AGE'?'Input structure and explicitly clocked observation age checked.':
     'Input quality or observation freshness not verified.';
   const qualityRules=rulesFor(rules,['DATA_INVALID']);
+  const weatherCheck=(...args)=>check(...args,inputChecksPassed(quality,rules));
   const cards=[
     inputValidity(quality,qualityRules),
-    check('Wind at both heights',`5 ft ${val(g.wind_speed_mph)} mph; 30 ft ${val(c.wind_speed_mph)} mph`,
+    weatherCheck('Wind at both heights',`5 ft ${val(g.wind_speed_mph)} mph; 30 ft ${val(c.wind_speed_mph)} mph`,
       `Wind below ${val(t.minWind)} mph or above ${val(t.maxWind)} mph: STOP; wind above ${val(t.windCautionAbove)} mph: CAUTION where no STOP applies.`,
       rulesFor(rules,['GROUND_WIND_TOO_CALM','GROUND_WIND_EXCEEDED','GROUND_WIND_CAUTION','UPPER_WIND_TOO_CALM','UPPER_WIND_EXCEEDED','UPPER_WIND_CAUTION']),
       ['UNL','IFAS'],'3–10 mph is a frequently discussed general range; the selected profile and product label govern actual restrictions.'),
-    check('Temperature gradient / inversion signal',`30 ft minus 5 ft = ${val(d.temperature)}°F`,
+    weatherCheck('Temperature gradient / inversion signal',`30 ft minus 5 ft = ${val(d.temperature)}°F`,
       `Positive gradient: inversion CAUTION signal; greater than ${val(t.inversionStopAbove)}°F: illustrative STOP, or STOP with verified label inversion prohibition.`,
       rulesFor(rules,['INVERSION_DETECTED']),['EPA_MANUAL','UMN'],
       'Warm air above cooler air can indicate stability. Two heights cannot establish the full inversion structure; the STOP cutoff is unvalidated project policy.'),
-    check('Wind-speed shear',`Absolute speed difference = ${val(Math.abs(d.speed))} mph`,
+    weatherCheck('Wind-speed shear',`Absolute speed difference = ${val(Math.abs(d.speed))} mph`,
       `Difference at least ${val(t.speedShearCautionAt)} mph: CAUTION; at least ${val(t.speedShearStopAt)} mph: STOP.`,
       rulesFor(rules,['VERTICAL_WIND_SHEAR']),['EPA_MANUAL','UNL'],
       'Different wind speeds at 5 ft and 30 ft can expose a ground-only blind spot. These numeric cutoffs are project policy, not published regulatory limits.'),
-    check('Wind-direction shear',`Shortest bearing difference = ${val(d.direction)}°`,
+    weatherCheck('Wind-direction shear',`Shortest bearing difference = ${val(d.direction)}°`,
       `Shift at least ${val(t.directionCautionAt)}°: CAUTION; at least ${val(t.directionStopAt)}° with upper wind above ${val(t.directionStopMinUpperWind)} mph: STOP.`,
       rulesFor(rules,['DIRECTIONAL_WIND_SHEAR']),['UMN','UNL'],
       'The shift is calculated from wind-FROM bearings; no downwind receptor, plume direction or field boundary has been assessed. Numeric cutoffs are illustrative.'),
-    check('Hot and dry conditions',`5 ft ${val(g.temp_f)}°F / ${val(g.humidity_pct)}% RH; 30 ft ${val(c.temp_f)}°F / ${val(c.humidity_pct)}% RH`,
+    weatherCheck('Hot and dry conditions',`5 ft ${val(g.temp_f)}°F / ${val(g.humidity_pct)}% RH; 30 ft ${val(c.temp_f)}°F / ${val(c.humidity_pct)}% RH`,
       'For either height: temperature above 85°F AND relative humidity below 25% triggers CAUTION.',
       rulesFor(rules,['GROUND_EVAPORATIVE_RISK','UPPER_EVAPORATIVE_RISK']),['UNL','IFAS'],
       'Hot, dry air can shrink droplets. The precise 85°F/25% combination is an illustrative CanopyGuard cutoff, not a universal research-validated limit.')
   ];
   if(rules.some(r=>r.code==='POST_SPRAY_VOLATILITY_ALERT')){
-    cards.push(check('Recorded post-spray inversion alert','High-volatility demo treatment context',
+    cards.push(weatherCheck('Recorded post-spray inversion alert','High-volatility demo treatment context',
       'STOP when the configured post-spray alert rule detects a qualifying inversion during monitoring.',
       rulesFor(rules,['POST_SPRAY_VOLATILITY_ALERT']),['EPA_MANUAL','EPA_LABELS'],
       'Vapor concentration is not measured. Monitoring duration is neither a safe re-entry period nor a label requirement.'));
