@@ -228,3 +228,34 @@ body{padding-bottom:130px}
   color:var(--muted);font-size:10px;line-height:1.5;overflow-wrap:anywhere}
 .rule-card>p:not(.rule-metric){font-size:12px;line-height:1.6;color:var(--muted);margin:0}
 @media(max-width:760px){.decision-metadata{gap:5px}.decision-meta-tag{font-size:9px;padding:4px 7px}}
+
+
+/* Evidence-backed screening explainer: the displayed policy is not scientific certification. */
+.decision-explanation{margin:14px 0 22px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;overflow:hidden}
+.decision-explanation details>summary{display:flex;align-items:center;flex-wrap:wrap;gap:9px;padding:17px 20px;cursor:pointer;
+  color:var(--ink);font-size:15px;font-weight:750;background:#f0f3ee}
+.decision-explanation details>summary span{font-size:11px;font-weight:500;color:var(--muted)}
+.decision-explanation details>summary:focus-visible{outline:3px solid #226bcb;outline-offset:-4px}
+.decision-explanation-body{padding:18px 20px 20px;font-size:12px;line-height:1.6;color:var(--ink)}
+.decision-explanation-body p{margin:7px 0}
+.decision-explanation-body .evidence-summary{font-size:14px;font-weight:650;line-height:1.6}
+.decision-explanation-body .evidence-data-note{color:var(--muted)}
+.evidence-check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0}
+.evidence-check{min-width:0;border:1px solid var(--line);border-radius:9px;padding:14px 15px;background:#fafbf8}
+.evidence-check-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.evidence-check h4{font-size:13px;margin:0;line-height:1.35}
+.evidence-check-status{border-radius:5px;padding:3px 8px;font-size:10px;font-weight:750;background:#e7eddf;color:#344c38}
+.evidence-check-status.STOP{background:var(--red-soft);color:var(--red)}
+.evidence-check-status.CAUTION{background:var(--amber-soft);color:var(--amber)}
+.evidence-check p.evidence-measured{font-size:13px;font-weight:600}
+.evidence-check p.evidence-note{color:var(--muted);font-size:11px}
+.evidence-references{margin-top:10px;padding-top:8px;border-top:1px solid var(--line);font-size:10px;line-height:1.7}
+.evidence-references a,.decision-explanation-body a{text-decoration:underline;text-underline-offset:2px;color:#12563d}
+.evidence-hidden{padding:12px 14px;background:#eff4e9;border-radius:6px}
+.evidence-limit{padding:12px 14px;background:#fff8e8;border-left:3px solid #996918;border-radius:5px;color:#59421d}
+@media(max-width:760px){
+  .decision-explanation details>summary{padding:13px 15px;font-size:13px}
+  .decision-explanation-body{padding:14px}
+  .evidence-check-grid{grid-template-columns:1fr}
+  .evidence-check{padding:13px}
+}
