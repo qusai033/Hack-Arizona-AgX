@@ -117,9 +117,9 @@ In the default NWS view, **Screening preset**, **Pesticide volatility**, and **N
 The NWS view models both heights from regional conditions: **no field sensor data or actual application history is claimed**. A modeled GO result is not authorization to spray. The imported snapshot mode remains read-only unless a verified live adapter offers `evaluateProfile`.
 
 
-## Standalone Arizona weather viewer
+## California and Arizona weather explorer
 
-A separate, general-purpose sample-data viewer is available at `http://localhost:5173/weather-viewer.html` after `npm run dev`. It displays clearly labeled synthetic example records, source timestamps, coordinates, and basic data-quality checks. It is not a live weather feed, makes no interpolated estimates, and is not connected to the CanopyGuard evaluator. See [docs/ARIZONA_WEATHER_VIEWER.md](docs/ARIZONA_WEATHER_VIEWER.md).
+Open `http://localhost:5173/weather-viewer.html` after `npm run dev` for a regional map of the dashboard's twelve shared locations. It loads NWS hourly forecasts automatically, with separate AZMET station observations where available. State filters, coordinate-based markers, and an accessible location list cover California and Arizona. Synthetic samples and playback require `?mode=demo`. The explorer makes no interpolated estimates and does not run the spray evaluator. See [docs/ARIZONA_WEATHER_VIEWER.md](docs/ARIZONA_WEATHER_VIEWER.md).
 
 ## Explicit evaluation-time evidence (Issue #46)
 

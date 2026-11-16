@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Standalone Arizona weather-data viewer using clearly labeled synthetic sample records.">
-  <title>Arizona Weather Data Viewer · CanopyGuard</title>
+  <meta name="description" content="Explore California and Arizona forecast locations with NWS hourly forecasts and AZMET station observations.">
+  <title>California &amp; Arizona Weather Explorer · CanopyGuard</title>
   <meta name="theme-color" content="#0C234B">
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./weather-viewer.css">
@@ -24,45 +24,64 @@
 
   <main class="shell">
     <header class="top">
-      <p class="eyebrow">STANDALONE DATA EXPLORER</p>
-      <h1>Arizona weather overview</h1>
-      <p class="lede">A simple geographic view of example weather records, with source timestamps and data-quality checks.</p>
-      <p class="notice"><strong>Sample data only.</strong> These values are synthetic fixtures, not live observations, forecasts, or measurements. No weather values are estimated between locations.</p>
-      <p><a href="./index.html">← Return to CanopyGuard dashboard</a></p>
+      <p class="eyebrow">REGIONAL WEATHER EXPLORER</p>
+      <h1>California &amp; Arizona</h1>
+      <p class="lede">Find your location. See the forecast and the measurements behind it.</p>
+      <p id="mode-notice" class="notice">NWS forecasts describe regional conditions. AZMET station observations are shown separately where available.</p>
+      <p><a id="dashboard-link" href="./index.html">← Return to CanopyGuard dashboard</a></p>
     </header>
-    <section class="layout" aria-label="Weather viewer">
-      <section class="panel map-panel">
-        <div class="panel-head"><div><p class="eyebrow">LOCATION OVERVIEW</p><h2>Arizona sample locations</h2></div><span class="pill">Not to scale</span></div>
-        <svg class="map" viewBox="0 0 600 470" role="img" aria-labelledby="map-title map-desc">
-          <title id="map-title">Schematic map of Arizona sample locations</title>
-          <desc id="map-desc">Five labeled points show the locations represented by synthetic sample records. The outline is schematic and not a navigation map.</desc>
-          <path class="state-shape" d="M110 35 L480 35 L468 168 L448 168 L445 310 L420 310 L416 430 L110 430 Z"/>
-          <g class="map-grid"><path d="M110 130H470M110 225H460M110 320H440M205 35V430M300 35V430M395 35V430"/></g>
-          <g id="map-points">
-            <circle cx="315" cy="300" r="10" data-place="tucson"/><circle cx="235" cy="270" r="10" data-place="phoenix"/>
-            <circle cx="270" cy="145" r="10" data-place="flagstaff"/><circle cx="135" cy="320" r="10" data-place="yuma"/>
-            <circle cx="365" cy="205" r="10" data-place="show-low"/>
-          </g>
-          <g class="map-labels"><text x="330" y="305">Tucson</text><text x="190" y="257">Phoenix</text><text x="282" y="135">Flagstaff</text><text x="90" y="345">Yuma</text><text x="380" y="202">Show Low</text></g>
-          <text class="map-foot" x="115" y="455">Schematic placement · not for navigation</text>
-        </svg>
-        <p class="muted">Select a location to inspect its sample record. Point placement is illustrative; the coordinates are stored separately in each record.</p>
+    <section class="explorer-layout" aria-label="Weather explorer">
+      <section class="panel map-panel" aria-labelledby="locations-title">
+        <div class="panel-head"><div><p class="eyebrow">LOCATION OVERVIEW</p><h2 id="locations-title">Our forecast locations</h2></div><span id="location-count" class="pill">12 locations</span></div>
+        <div class="region-filters" role="group" aria-label="Filter locations by state">
+          <button type="button" data-region="all" aria-pressed="true">Both states</button>
+          <button type="button" data-region="CA" aria-pressed="false">California</button>
+          <button type="button" data-region="AZ" aria-pressed="false">Arizona</button>
+        </div>
+        <label class="mobile-location-picker" for="location-select">Location
+          <select id="location-select"></select>
+        </label>
+        <div id="region-map" class="region-map" role="group" aria-label="Choose a mapped location">
+          <svg id="map-geography" viewBox="0 0 800 640" role="img" aria-labelledby="map-title map-desc">
+            <title id="map-title">California and Arizona forecast locations</title>
+            <desc id="map-desc">Census state boundaries with numbered location buttons. Dots mark stored coordinates; lines connect nearby dots to their buttons. The location list provides the same choices.</desc>
+            <g id="state-boundaries"></g><g id="state-labels" aria-hidden="true"></g>
+            <g id="map-leaders" aria-hidden="true"></g>
+          </svg>
+          <div id="map-points"></div>
+        </div>
+        <p class="map-key">Numbered buttons match the location list. Small dots mark the coordinates.</p>
+        <a id="selected-weather-link" class="selected-weather-link" href="#selected-name">View weather for Fresno, CA ↓</a>
+        <p class="map-attribution">Boundaries: <a href="https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html">U.S. Census Bureau, 2025</a> · Generalized regional map</p>
+        <ol id="location-list" class="location-list" aria-label="Forecast locations"></ol>
       </section>
-      <section class="panel details">
-        <p class="eyebrow">SELECTED RECORD</p><h2 id="selected-name">Tucson</h2>
+      <section class="panel details" aria-labelledby="selected-name">
+        <p class="eyebrow">SELECTED LOCATION</p><h2 id="selected-name" tabindex="-1">Fresno, CA</h2>
         <p id="selected-coordinates" class="muted"></p>
-        <dl id="weather-values" class="values"></dl>
-        <div class="source-block"><span class="eyebrow">SOURCE</span><p id="selected-source">Synthetic demo fixture</p><span class="eyebrow">OBSERVED AT</span><p id="selected-time"></p></div>
-        <p id="record-quality" class="quality" role="status"></p>
+        <div class="data-toolbar"><span id="load-status" role="status">Loading weather…</span><button id="refresh-weather" type="button">Refresh</button></div>
+        <section class="weather-source" aria-labelledby="forecast-title">
+          <p class="eyebrow" id="forecast-kind">REGIONAL FORECAST</p><h3 id="forecast-title">NWS hourly forecast</h3>
+          <p id="forecast-status" class="source-status" role="status">Loading forecast…</p>
+          <dl id="weather-values" class="values"></dl>
+          <dl id="forecast-times" class="source-times"></dl>
+        </section>
+        <section id="station-section" class="weather-source" aria-labelledby="station-title">
+          <p class="eyebrow">STATION OBSERVATION</p><h3 id="station-title">AZMET measurements</h3>
+          <p id="station-status" class="source-status" role="status"></p>
+          <dl id="station-values" class="values"></dl>
+          <dl id="station-times" class="source-times"></dl>
+          <p id="station-heights" class="muted" hidden>Temperature and humidity: 4.9 ft. Wind: 9.8 ft. These measurements do not describe conditions at canopy height.</p>
+        </section>
+        <p id="weather-scope" class="muted">Forecasts and measurements describe different sources. No weather values are estimated between map locations.</p>
       </section>
     </section>
 
-    <section class="panel playback-panel" aria-labelledby="playback-title">
+    <section id="playback-panel" class="panel playback-panel" aria-labelledby="playback-title" hidden>
       <div class="panel-head">
-        <div><p class="eyebrow">SYNTHETIC DATA PLAYBACK</p><h2 id="playback-title">Tucson sample timeline</h2></div>
+        <div><p class="eyebrow">SYNTHETIC DATA PLAYBACK</p><h2 id="playback-title">Selected location sample timeline</h2></div>
         <span id="playback-status" class="pill" role="status">Paused</span>
       </div>
-      <p class="muted">Eight fixed example frames. Normal Play advances one simulated minute per real second. Faster settings change only the playback cadence; each tick still advances exactly one minute. This demonstration is isolated from the CanopyGuard evaluator and treatment workflow.</p>
+      <p class="muted">Eight fixed example frames for the selected location. Changing locations resets playback. Normal Play advances one simulated minute per real second. Faster settings change only the playback cadence; each tick still advances exactly one minute. This demonstration is isolated from the CanopyGuard evaluator and treatment workflow.</p>
       <div class="playback-controls">
         <label for="playback-speed">Playback speed
           <select id="playback-speed">
@@ -92,12 +111,12 @@
       </ol>
     </section>
 
-    <section class="panel">
-      <div class="panel-head"><div><p class="eyebrow">DATA QUALITY</p><h2>Record validation</h2></div><span id="quality-count" class="pill"></span></div>
-      <p class="muted">Checks cover required fields, broad numeric bounds, duplicate IDs, timestamps, and a three-hour freshness window. A failed check is shown; missing values are never filled in.</p>
+    <section id="quality-panel" class="panel" hidden>
+      <div class="panel-head"><div><p class="eyebrow">DEMO DATA QUALITY</p><h2>Sample record validation</h2></div><span id="quality-count" class="pill"></span></div>
+      <p class="muted">Checks use an explicit demo reference clock, not the current date. They cover required fields, broad numeric bounds, duplicate IDs, timestamps, and a three-hour freshness window.</p>
       <ul id="quality-list" class="quality-list"></ul>
     </section>
-    <footer>Independent viewer · Synthetic playback is a timing example only. No connection to application recommendations or the GO / CAUTION / STOP evaluator.</footer>
+    <footer>CanopyGuard · Regional weather explorer. This page does not issue application recommendations. <a id="mode-link" href="?mode=demo">Open sample-data demo</a></footer>
   </main>
 </body>
 </html>

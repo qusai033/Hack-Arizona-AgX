@@ -4,7 +4,7 @@ import {SAMPLE_OBSERVATIONS,validateWeatherRecord,assessWeatherDataset,formatObs
 
 const now=Date.parse('2026-11-15T16:00:00Z');
 test('sample records carry coordinates, weather values, source, and timestamps',()=>{
-  assert.equal(SAMPLE_OBSERVATIONS.length,5);
+  assert.equal(SAMPLE_OBSERVATIONS.length,12);
   for(const record of SAMPLE_OBSERVATIONS) assert.equal(validateWeatherRecord(record).valid,true);
 });
 test('record validation reports missing and out-of-range fields without filling them',()=>{

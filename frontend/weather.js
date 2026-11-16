@@ -1,27 +1,11 @@
 import { evaluateSnapshot, createSession, startSpray, finishSpray, getProfile } from './engine/index.js';
 import { nextWindow, formatTime, validateForecast } from './timeline.js';
 import { loadAzmetObservation, AZMET_HEIGHTS } from './azmet.js';
-import { FRESHNESS_POLICY, describeLimit } from './freshness-policy.js';
+import { FRESHNESS_POLICY } from './freshness-policy.js';
 
-/** Stable city IDs shared by the selector, NWS fetches, cache, and audit source labels.
- * California coordinates locate city centers, not verified orchard sensor installations.
- * Arizona entries sit at an AZMET station (published coordinates) and name it in
- * `azmet_station`, so the regional forecast can be checked against that station.
- */
-export const locations = Object.freeze({
-  fresno: Object.freeze({label:'Fresno, CA',latitude:36.7378,longitude:-119.7871,zone:'America/Los_Angeles',block:'Fresno, CA · forecast area'}),
-  modesto: Object.freeze({label:'Modesto, CA',latitude:37.6391,longitude:-120.9969,zone:'America/Los_Angeles',block:'Modesto, CA · forecast area'}),
-  merced: Object.freeze({label:'Merced, CA',latitude:37.3022,longitude:-120.4830,zone:'America/Los_Angeles',block:'Merced, CA · forecast area'}),
-  bakersfield: Object.freeze({label:'Bakersfield, CA',latitude:35.3733,longitude:-119.0187,zone:'America/Los_Angeles',block:'Bakersfield, CA · forecast area'}),
-  chico: Object.freeze({label:'Chico, CA',latitude:39.7285,longitude:-121.8375,zone:'America/Los_Angeles',block:'Chico, CA · forecast area'}),
-  yuba_city: Object.freeze({label:'Yuba City, CA',latitude:39.1404,longitude:-121.6169,zone:'America/Los_Angeles',block:'Yuba City, CA · forecast area'}),
-  yuma_valley: Object.freeze({label:'Yuma Valley, AZ',latitude:32.71,longitude:-114.7,zone:'America/Phoenix',block:'Yuma Valley, AZ · forecast area',azmet_station:'az02'}),
-  yuma_north_gila: Object.freeze({label:'Yuma North Gila, AZ',latitude:32.78,longitude:-114.52,zone:'America/Phoenix',block:'Yuma North Gila, AZ · forecast area',azmet_station:'az14'}),
-  roll: Object.freeze({label:'Roll, AZ',latitude:32.76,longitude:-113.97,zone:'America/Phoenix',block:'Roll, AZ · forecast area',azmet_station:'az24'}),
-  maricopa: Object.freeze({label:'Maricopa, AZ',latitude:33.07,longitude:-111.97,zone:'America/Phoenix',block:'Maricopa, AZ · forecast area',azmet_station:'az06'}),
-  safford: Object.freeze({label:'Safford, AZ',latitude:32.81,longitude:-109.68,zone:'America/Phoenix',block:'Safford, AZ · forecast area',azmet_station:'az04'}),
-  willcox_bench: Object.freeze({label:'Willcox Bench, AZ',latitude:32.12,longitude:-109.71,zone:'America/Phoenix',block:'Willcox Bench, AZ · forecast area',azmet_station:'az39'})
-});
+import { locations } from './locations.js';
+import { validateForecastIssuance, normalizeHourly } from './nws.js';
+export { locations } from './locations.js';
 const compass = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const bearing = degrees => ((degrees % 360) + 360) % 360;
@@ -38,29 +22,8 @@ const anchors = {
 };
 export const presetNames = Object.freeze([...Object.keys(anchors), 'afternoon']);
 const hour = 3600000;
-/** Project policy, not a guarantee of NWS publication frequency (docs/FRESHNESS_POLICY.md): reject issuance
- * older than 6 hours and timestamps more than 5 minutes ahead of the request clock.
- */
-export const MAX_FORECAST_ISSUANCE_AGE_MS = FRESHNESS_POLICY.forecastIssuance.maxAgeMs;
-const MAX_ISSUANCE_CLOCK_SKEW_MS = FRESHNESS_POLICY.forecastIssuance.maxFutureMs;
-const issuanceFields=['updateTime','generatedAt','updated'];
-/** Valid time (hourly period), source issue/update time, and fetch time are distinct.
- * Use NWS updateTime when available, then generatedAt, then updated. An invalid
- * primary field is rejected rather than silently replaced by a secondary field.
- */
-export function validateForecastIssuance(properties, nowMs, maxAgeMs=MAX_FORECAST_ISSUANCE_AGE_MS) {
-  if(!properties||typeof properties!=='object'||!Number.isFinite(nowMs)||
-     !Number.isFinite(maxAgeMs)||maxAgeMs<=0)throw new TypeError('Invalid NWS issuance validation input');
-  const field=issuanceFields.find(key=>Object.hasOwn(properties,key));
-  if(!field)throw new Error('NWS forecast issuance/update timestamp missing');
-  const value=properties[field];
-  if(typeof value!=='string'||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(value)||
-     !Number.isFinite(Date.parse(value)))throw new Error('Invalid NWS forecast issuance/update timestamp');
-  const issuedMs=Date.parse(value),age=nowMs-issuedMs;
-  if(age < -MAX_ISSUANCE_CLOCK_SKEW_MS)throw new Error(`NWS forecast issuance time is in the future (more than ${describeLimit(MAX_ISSUANCE_CLOCK_SKEW_MS)} ahead)`);
-  if(age > maxAgeMs)throw new Error(`NWS forecast issuance is too old (older than ${describeLimit(maxAgeMs)})`);
-  return {issued_at:new Date(issuedMs).toISOString(),issuance_source:field,issuance_age_minutes:Math.max(0,age/60000)};
-}
+export { validateForecastIssuance, normalizeHourly, MAX_FORECAST_ISSUANCE_AGE_MS } from './nws.js';
+const issuanceFields = ['updateTime', 'generatedAt', 'updated'];
 const smooth = x => x*x*(3-2*x);
 // Each preset is anchored at the Fresno local time its story describes (PST = UTC−8).
 const anchorTimes = Object.freeze({
@@ -180,21 +143,6 @@ export function estimateLayers(row, location) {
   };
 }
 
-export function normalizeHourly(period) {
-  const match = typeof period.windSpeed==='string' && /^(\d+(?:\.\d+)?)(?:\s+to\s+(\d+(?:\.\d+)?))?\s+mph$/i.exec(period.windSpeed.trim());
-  const wind = match ? Number(match[2]??match[1]) : NaN;
-  // A zero-length wind vector has no bearing. Use 0° for the fixed contract.
-  const direction = wind===0 ? 0 : compass.indexOf(period.windDirection);
-  const humidity = period.relativeHumidity?.value;
-  const time = Date.parse(period.startTime);
-  if(!match||direction<0||!Number.isFinite(humidity)||humidity<0||humidity>100||
-     !Number.isFinite(period.temperature)||!['F','C'].includes(period.temperatureUnit)||
-     !Number.isFinite(time)||Date.parse(period.endTime)-time!==hour) throw new Error('Unsupported or incomplete NWS hourly period');
-  const skyText = period.shortForecast ?? '';
-  return {timestamp:new Date(time).toISOString(), temperature:period.temperatureUnit==='F'?period.temperature:period.temperature*1.8+32,
-    wind, direction:direction*22.5, humidity,
-    sky:/cloudy|overcast|rain|snow/i.test(skyText)?'cloudy':/sunny|clear/i.test(skyText)?'clear':'unknown'};
-}
 function offlineRows(start, location) {
   return Array.from({length:24},(_,index)=>{
     const timestamp = new Date(start+index*hour).toISOString();
