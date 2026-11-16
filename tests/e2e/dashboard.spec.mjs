@@ -936,3 +936,53 @@ test('NWS model badges distinguish valid input structure from verified orchard s
   expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+
+test('research-backed decision explainer reflects GO and STOP evaluator outputs with source links',async({page})=>{
+  const blocked=await isolateNetwork(page);
+  const errors=captureErrors(page);
+  await page.goto('/?mode=demo');
+  const panel=page.locator('#decision-explanation');
+  await expect(panel).toBeVisible();
+  await expect(page.locator('#decision-explanation-details')).toHaveAttribute('open','');
+  await expect(panel).toContainText('The most severe rule determines the overall status');
+  await expect(panel).toContainText('SIMULATED demo readings');
+  await expect(panel).toContainText('illustrative CanopyGuard cutoff');
+  await expect(panel).toContainText('12.4 mph');
+  await expect(panel).toContainText('4.5°F');
+  await expect(panel).toContainText('7.6 mph');
+  await expect(panel).toContainText('a measured drift incident');
+  expect(await page.locator('#decision-explanation-body a[href^="https://"]').count()).toBeGreaterThanOrEqual(5);
+  await page.locator('[data-scenario="clear"]').click();
+  await expect(page.locator('#decision-title')).toHaveText('GO — configured weather checks passed');
+  await expect(panel).toContainText('Configured checks passed');
+  await expect(panel).toContainText('Actual triggered rules: 0 STOP and 0 CAUTION');
+  await expect(panel).toContainText('GO means only');
+  await expect(panel).not.toContainText('12.4 mph');
+  await page.locator('#decision-explanation-details summary').click();
+  await expect(page.locator('#decision-explanation-details')).not.toHaveAttribute('open','');
+  await page.locator('[data-scenario="trap"]').click();
+  await expect(page.locator('#decision-explanation-details')).not.toHaveAttribute('open','');
+  await page.locator('#decision-explanation-details summary').click();
+  await expect(panel).toContainText('12.4 mph');
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('external imported results never inherit scientifically sourced built-in thresholds',async({page})=>{
+  const blocked=await isolateNetwork(page);
+  const errors=captureErrors(page);
+  await page.goto('/?mode=demo');
+  const snapshot=await page.evaluate(()=>window.CanopyGuardAudit.list().at(-1).snapshot);
+  await page.evaluate(data=>window.CanopyGuard.setSnapshot(data),snapshot);
+  await expect(page.locator('#decision-explanation-body')).toContainText('Calculation and thresholds unverified');
+  expect(await page.locator('#decision-explanation-body [data-evidence-check]').count()).toBe(0);
+  await page.evaluate(data=>{
+    const bad=structuredClone(data);bad.readings.canopy_30ft.temp_f=null;
+    try{window.CanopyGuard.setSnapshot(bad);}catch{}
+  },snapshot);
+  await expect(page.locator('#decision-title')).toContainText('DATA UNAVAILABLE');
+  await expect(page.locator('#decision-explanation-body')).toContainText('No reproducible screening decision is available');
+  expect(blocked).toEqual([]);
+  expect(errors).toEqual([]);
+});
