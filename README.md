@@ -132,6 +132,13 @@ The built-in evaluator now checks 5 ft and 30 ft readings independently, disting
 
 See [docs/ENGINE_QUALITY_PROVENANCE.md](docs/ENGINE_QUALITY_PROVENANCE.md) for the metadata schema, time roles, safe presentation rules and regression checks. Missing-sensor UI controls and numeric policy changes are separate issues (#43 and #44).
 
+
+## Why CanopyGuard shows GO / CAUTION / STOP
+
+The dashboard includes a live **“How was this weather-screening decision reached?”** panel below the current decision banner. It shows the actual 5 ft/30 ft inputs, effective illustrative policy cutoffs, rule severities, and clickable EPA/university-extension sources. The overall status uses **STOP > CAUTION > GO**; GO means configured checks passed, **not** application safety or label compliance. Scientific references support the *environmental risk mechanisms* (wind, inversions, hot/dry evaporation), while exact inversion/shear and profile thresholds are **project assumptions requiring field validation**. NWS heights remain modeled; imported/external results cannot be attributed to CanopyGuard's built-in engine without proof.
+
+See [Decision evidence and source traceability](docs/DECISION_EVIDENCE.md) for the research-backed explanations, actual equations, audit provenance, assumptions, and limitations.
+
 ## The science behind GO / CAUTION / STOP
 
 The science is about whether spray reaches the crop or remains airborne and moves off-target. CanopyGuard screens weather conditions associated with that movement. The physical mechanisms are established; **the app's exact decision thresholds are illustrative, not field-validated spray limits**.

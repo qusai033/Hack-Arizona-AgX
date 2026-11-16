@@ -14,6 +14,7 @@ import { assertEvent, createEvent } from './events.js';
 import { createDemoState, reduceDemoState, lastFrame, AFTERNOON_REPLAY_TIME } from './demo-controller.js';
 import {createPlayback} from './playback.js';
 import { mountCanopyView } from './canopy-view.js';
+import { decisionExplanation } from './decision-explanation.js';
 
 mountCanopyView(document.getElementById('canopy-view-slot'));
 const $ = id => document.getElementById(id);
@@ -205,6 +206,8 @@ function renderSnapshot() {
   $('decision-note').textContent=mode==='forecast'?'Estimated 5 ft/30 ft conditions from regional NWS forecast. NOT measured orchard conditions. Never treat forecast GO as spray clearance.':
     `Based on both heights · ${mode==='demo'?'Demonstration only':mode==='imported'?'Imported snapshot only':'Check on-site conditions before application'}`;
   renderDecisionMetadata(e);
+  // Explain the actual evaluator outcome, not a second policy calculation.
+  $('decision-explanation-body').innerHTML=decisionExplanation(snapshot,{mode});
   const trusted=mode==='demo'||mode==='forecast';
   $('rules').innerHTML=e.triggered_rules.length?e.triggered_rules.map(r=>{
     const origin=trusted&&r.provenance&&Array.isArray(r.source_heights)?
@@ -332,6 +335,7 @@ function fail(error) {
   $('headline').textContent='A current recommendation cannot be verified.';
   $('decision-note').textContent='No valid spray decision is available.';
   $('decision-metadata').textContent='Input quality unavailable · Evaluator unverified';
+  $('decision-explanation-body').textContent='No reproducible screening decision is available. Check the weather source, the product label, and on-site conditions before proceeding.';
   $('error-message').textContent=error.message||String(error); $('error-message').hidden=false;
   $('rules').replaceChildren();
   for(const id of ['ground-readings','canopy-readings','ground-reason','delta-chips','sensor-details','monitor-risk']) $(id).replaceChildren();
@@ -631,6 +635,7 @@ function failNoObservation(message) {
   $('decision-label').textContent='CANOPYGUARD · NO MEASURED ORCHARD DATA';
   $('headline').textContent='An on-site spraying recommendation cannot be verified.';
   $('decision-note').textContent='Regional NWS model is not an orchard sensor measurement.';
+  $('decision-explanation-body').textContent='No verified weather evaluation can be explained while the forecast is unavailable. The actual product label and on-site conditions take precedence.';
   $('error-message').hidden=false;
   $('error-message').textContent=message;
   for(const id of ['ground-readings','canopy-readings','ground-reason','delta-chips','sensor-details','monitor-risk'])$(id).replaceChildren();
