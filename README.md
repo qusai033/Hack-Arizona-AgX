@@ -131,3 +131,55 @@ The built-in demo controller captures an explicit `evaluationTimeMs` when it cre
 The built-in evaluator now checks 5 ft and 30 ft readings independently, distinguishes input-integrity fail-safe STOP from actual upper-height drift hazards, and exposes structured `data_quality` and per-rule `provenance`, `source_heights`, and upper/cross-height flags. Rule severity is ordered STOP before CAUTION, and hidden-risk credit requires fully valid input plus a qualifying upper-height STOP. The decision banner displays the actual built-in engine version and qualified input/source-height metadata; external/imported results remain unverified. Regional NWS heights are still **modeled**, never measured orchard sensor data. **Input VALID** means structural/time checks passed when supplied, not physical sensor accuracy or spray permission. Historical audit evidence and complete CSV columns remain intact.
 
 See [docs/ENGINE_QUALITY_PROVENANCE.md](docs/ENGINE_QUALITY_PROVENANCE.md) for the metadata schema, time roles, safe presentation rules and regression checks. Missing-sensor UI controls and numeric policy changes are separate issues (#43 and #44).
+
+## The science behind GO / CAUTION / STOP
+
+The science is about whether spray reaches the crop or remains airborne and moves off-target. CanopyGuard screens weather conditions associated with that movement. The physical mechanisms are established; **the app's exact decision thresholds are illustrative, not field-validated spray limits**.
+
+### What makes spray drift
+
+- **Droplet size and wind.** Small droplets settle slowly and follow air currents more readily. Stronger winds can transport them farther. Nozzle type, pressure, release height, and sprayer setup therefore matter alongside weather.
+- **Evaporation.** Hot, dry air removes water from droplets, making them smaller and more drift-prone. The pesticide does not necessarily disappear when its carrier water evaporates.
+- **Temperature inversions.** When cooler air lies beneath warmer air, vertical mixing is suppressed. Fine droplets can remain concentrated near the ground and move sideways, even in a gentle breeze. Calm conditions can accompany an inversion, but calm wind alone does not prove one.
+
+These mechanisms are described in [Nebraska Extension's spray-drift guidance](https://extensionpubs.unl.edu/publication/g1773/2019/html/view).
+
+**Vapor movement after application** is a separate process: some formulations can release pesticide vapor after deposition. This depends on the chemical, formulation, and environmental conditions; it is distinct from droplets drifting during spraying. [UC IPM explains particle and vapor drift](https://herbicide-symptoms.ipm.ucanr.edu/herbicide-damage/).
+
+### Why compare 5 ft and 30 ft?
+
+A ground reading cannot describe the entire air layer through which spray travels. The app compares temperatures using:
+
+**Inversion signal = temperature at 30 ft − temperature at 5 ft**
+
+For example, consider these illustrative readings:
+
+| Height | Temperature | Wind | Relative humidity |
+| --- | --- | --- | --- |
+| 5 ft | 64°F | 5 mph NW | 50% |
+| 30 ft | 68°F | 7 mph NW | 50% |
+
+Under the standard contact-fungicide preset, the ground-only checks pass. But the upper air is **4°F warmer**, so the multi-height evaluator flags an inversion and returns STOP. This demonstrates the hidden risk the project is trying to expose; it is not a field measurement or a prediction of drift distance.
+
+### How the current app decides
+
+The **standard contact-fungicide preset** applies these checks:
+
+| Check | Current app behavior |
+| --- | --- |
+| Wind at either height | Below 3 or above 10 mph → STOP; above 8 through 10 mph → CAUTION |
+| Upper air warmer than ground | Positive difference through 1°F → CAUTION; above 1°F → STOP |
+| Wind-speed difference between heights | At least 4 mph → CAUTION; at least 6 mph → STOP |
+| Wind-direction difference between heights | At least 45° → CAUTION; at least 75°, with upper wind above 4 mph → STOP |
+| Hot and dry at either height | Above 85°F **and** relative humidity below 25% → CAUTION |
+| Required data fails validation | STOP / evaluation unavailable |
+
+The most severe triggered rule determines the result; favorable conditions do not cancel a STOP. Other presets change some limits: the high-volatility preset uses an 8 mph wind maximum and a temperature-difference STOP threshold above 0.2°F; the fine-droplet preset lowers the speed-shear STOP threshold to 4.5 mph. These adjustments are also illustrative. If verified label context prohibits inversions, any positive temperature difference triggers STOP regardless of the preset's inversion cutoff. The app does not automatically retrieve or verify product labels.
+
+The implementation lives in [the evaluator](frontend/engine/evaluate.js) and [profile settings](frontend/engine/profiles.js). The broad 3–10 mph screening range resembles [UC IPM guidance](https://ipm.ucanr.edu/environmental-protection-and-pesticide-stewardship/mitigating-pesticide-hazards/), but **that does not validate the complete rule set**. In particular, the inversion and shear cutoffs need experimental support. Wind shear describes differences in airflow; its magnitude alone does not establish how much spray will drift.
+
+### What GO does and does not establish
+
+**GO means that none of the configured checks triggered.** It does not account fully for nearby people or sensitive crops, buffers, equipment configuration, product-specific restrictions, or every other application hazard. EPA identifies wind limits, droplet size, release height, and buffers as product-label considerations. [EPA guidance on drift-reduction labeling](https://www.epa.gov/reducing-pesticide-drift/improving-labels-reduce-pesticide-drift).
+
+There is also a major measurement limitation: **NWS mode estimates the 5 ft and 30 ft conditions using simplified formulas; it does not measure an orchard inversion**. AZMET adds actual station observations, but those do not establish the orchard's 30 ft conditions. The current system is a weather-screening prototype. Operational confidence would require local measurements, validated thresholds, and the actual product's application requirements.
