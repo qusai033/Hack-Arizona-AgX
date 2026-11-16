@@ -11,8 +11,8 @@ function captureErrors(page) {
 
 test('standalone weather playback supports speed, pause, one-minute step, and reset',async({page})=>{
   const errors=captureErrors(page);
-  await page.goto('/weather-viewer.html');
-  await expect(page.getByRole('heading',{name:'Tucson sample timeline'})).toBeVisible();
+  await page.goto('/weather-viewer.html?mode=demo');
+  await expect(page.getByRole('heading',{name:'Fresno, CA sample timeline'})).toBeVisible();
   await expect(page.locator('#playback-clock')).toHaveText('00:00');
   await expect(page.locator('#playback-speed')).toHaveValue('1');
   await expect(page.locator('#playback-frame')).toHaveText('1 of 8');
@@ -41,7 +41,7 @@ test('standalone weather playback supports speed, pause, one-minute step, and re
 
 test('paused Step advances one minute and the eight-frame timeline stops cleanly',async({page})=>{
   const errors=captureErrors(page);
-  await page.goto('/weather-viewer.html');
+  await page.goto('/weather-viewer.html?mode=demo');
   for(let index=0;index<7;index++) {
     await page.getByRole('button',{name:'Step +1 minute',exact:true}).click();
   }

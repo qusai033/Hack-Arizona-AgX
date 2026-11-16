@@ -1,35 +1,84 @@
-# Standalone Arizona weather viewer
+# California and Arizona weather explorer
 
-The optional page at `/weather-viewer.html` is a general-purpose display, playback, and data-quality demonstration. It is separate from the CanopyGuard dashboard and its evaluator.
+Open `/weather-viewer.html` for regional weather, or `/weather-viewer.html?mode=demo`
+for an offline sample-data demonstration. The explorer does not run the spray evaluator,
+estimate orchard heights, interpolate weather between locations, or connect treatment history.
 
-## Current behavior
+## Locations and map
 
-- Shows five example Arizona city locations on a schematic, explicitly not-to-scale outline.
-- Displays temperature, relative humidity, wind speed/direction, coordinates, source attribution, and observation timestamps for each sample record.
-- Includes an eight-frame synthetic Tucson weather timeline with Play, Pause, Step, Reset, and 1× / 5× / 10× speed controls.
-- Defaults to 1× playback: one simulated minute per real second. Each timer callback advances exactly one simulated minute and creates one unique demo event ID, regardless of selected speed.
-- Keeps paused Step to one simulated minute, freezes time on Pause, cancels the timer on Reset and page exit, and ignores callbacks from canceled timers.
-- Validates required fields, broad numeric ranges, duplicate record IDs, timestamp validity, and a configurable freshness window.
-- Reports missing, stale, future-dated, or malformed records instead of filling or silently substituting values.
-- Includes keyboard-operable map points, accessible playback controls, and responsive layout.
+`frontend/locations.js` is the single location registry used by the dashboard and explorer.
+It retains existing IDs, coordinates, time zones, and AZMET station associations.
 
-## Data and limitations
+- California: Fresno, Modesto, Merced, Bakersfield, Chico, Yuba City.
+- Arizona: Yuma Valley, Yuma North Gila, Roll, Maricopa, Safford, Willcox Bench.
 
-Every bundled location record and every playback frame is a **synthetic demo fixture**. None is an AZMET station observation, HRRR grid value, USGS elevation sample, live forecast, or verified measurement. The fixture is not updated from a network source. The schematic map is not a navigation product, and no spatial interpolation, source fusion, vertical profile estimation, or accuracy claim is made.
+Both / California / Arizona filters adjust the map extent and location list. Selecting a
+filter that excludes the active location selects the first location in that state.
+Numbered buttons and the keyboard-accessible list select the same record; selection stays
+highlighted after focus moves. `?location=willcox_bench` links directly to a location.
+On phones a native location selector replaces the full list, and a link jumps directly
+to the selected weather panel without scrolling through every location.
 
-The playback timeline is a UI timing example only. Faster playback changes the real-time interval between ticks; it does not change the one-minute simulated increment or event identity guarantee. The viewer intentionally has no imports from `weather.js`, `engine/`, the application evaluator, or treatment/session workflow. It does not expose application-specific thresholds, action windows, or recommendations. Its numeric validation bounds are broad software-integrity checks, not meteorological or operational thresholds.
+Boundaries are the U.S. Census Bureau's 2025 cartographic state boundaries at 1:20,000,000.
+California and Arizona are emphasized; Nevada and Utah provide geographic context.
+The boundaries and location coordinates use the same equirectangular projection with
+standard parallel 37°N. Small dots preserve actual stored coordinates. Nearby numbered
+buttons are separated in screen space and connected to the dots with leader lines.
+The generalized map is a regional location guide, not a parcel or navigation product.
 
-The pesticide-evaluator walkthrough described by issue #48 is not modified by this standalone example.
-
-## Run and test
-
-From the repository root:
+Source: [Census cartographic boundaries](https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html).
+The local asset requires no map API, tile service, runtime network request, or key.
+To reproduce it with Python's standard library:
 
 ```sh
-npm run dev
-# Open http://localhost:5173/weather-viewer.html
-npm test
-npm run build
+curl -fL https://www2.census.gov/geo/tiger/GENZ2025/kml/cb_2025_us_state_20m.zip \
+  -o /tmp/cb_2025_us_state_20m.zip
+python3 scripts/import-state-boundaries.py /tmp/cb_2025_us_state_20m.zip
 ```
 
-The build copies the standalone page and its assets with the existing frontend directory. The page is also available in the static `dist/` output.
+The generated module records the source archive SHA-256. The conversion retains the
+published polygon coordinates, including islands, without additional simplification.
+
+## Normal mode
+
+- Automatically fetches the selected location's NWS hourly forecast on load and every
+  30 seconds while visible. Refresh is also available manually. A hidden tab refreshes
+  on return; leaving the page cancels requests and timers.
+- Displays the current forecast hour, or explicitly identifies the next hour if the
+  current hour is missing. Forecast valid period, source issuance/update time, and
+  retrieval time are shown separately in the selected location's time zone.
+- Uses the same issuance validation and hourly normalization as the dashboard, extracted
+  into `nws.js`. The dashboard's existing exports remain compatible.
+- Rejects missing, future, or stale issuance using the shared freshness policy. Malformed
+  periods, out-of-range weather values, and gaps are unavailable, never backfilled.
+- Separately loads observations for Arizona's associated AZMET stations. The existing
+  AZMET adapter enforces station identity, sensor quality, 45-minute freshness, and
+  five-minute successful-response reuse. Observation time is not forecast valid time.
+- Labels measured heights: temperature/humidity 4.9 ft and wind 9.8 ft. No measured
+  canopy-height conditions are claimed. California locations have no connected station.
+- Each source can fail independently. Unavailable data is cleared and explained; there
+  is no synthetic fallback or persistent weather cache in this explorer.
+- Aborts superseded location requests and ignores late results from an earlier selection.
+
+## Explicit demo mode
+
+Demo mode makes no weather requests. All twelve synthetic records are checked against
+the fixed reference clock `2026-11-15T16:00:00Z`, not today's date. Values and thresholds
+are illustrative, and are labeled as samples rather than actual observations.
+
+The selected record and its eight-frame playback show the same values. Selecting another
+location resets playback. Play advances one simulated minute per real second; 5× and 10×
+change cadence only. Pause freezes the clock, Step adds one minute, and Reset cancels
+playback and begins a new event run. The timeline stops at its final frame.
+
+## Validation
+
+```sh
+npm test
+npm run build
+npm run test:e2e
+```
+
+Coverage includes shared-location identity, projected geography, mobile marker separation,
+NWS issuance and coverage failures, independent station/forecast failures, late responses,
+automatic/manual refresh, keyboard selection, responsive layouts, and offline demo playback.
