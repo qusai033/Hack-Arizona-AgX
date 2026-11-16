@@ -231,11 +231,14 @@ body{padding-bottom:130px}
 
 
 /* Evidence-backed screening explainer: the displayed policy is not scientific certification. */
+.comparison-section{margin-top:24px}
 .decision-explanation{margin:14px 0 22px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;overflow:hidden}
 .decision-explanation details>summary{display:flex;align-items:center;flex-wrap:wrap;gap:9px;padding:17px 20px;cursor:pointer;
   color:var(--ink);font-size:15px;font-weight:750;background:#f0f3ee}
 .decision-explanation details>summary span{font-size:11px;font-weight:500;color:var(--muted)}
 .decision-explanation details>summary:focus-visible{outline:3px solid #226bcb;outline-offset:-4px}
+#decision-explanation-details>summary::before{content:'▸';display:inline-block}
+#decision-explanation-details[open]>summary::before{transform:rotate(90deg)}
 .decision-explanation-body{padding:18px 20px 20px;font-size:12px;line-height:1.6;color:var(--ink)}
 .decision-explanation-body p{margin:7px 0}
 .decision-explanation-body .evidence-summary{font-size:14px;font-weight:650;line-height:1.6}
@@ -247,6 +250,9 @@ body{padding-bottom:130px}
 .evidence-check-status{border-radius:5px;padding:3px 8px;font-size:10px;font-weight:750;background:#e7eddf;color:#344c38}
 .evidence-check-status.STOP{background:var(--red-soft);color:var(--red)}
 .evidence-check-status.CAUTION{background:var(--amber-soft);color:var(--amber)}
+.evidence-check-status.UNVERIFIED,.evidence-check-status.NOT_EVALUATED{background:var(--amber-soft);color:var(--amber)}
+.evidence-input-policy{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+.decision-explanation .evidence-input-policy>summary{display:list-item;padding:4px 0;background:none;font-size:11px;font-weight:600}
 .evidence-check p.evidence-measured{font-size:13px;font-weight:600}
 .evidence-check p.evidence-note{color:var(--muted);font-size:11px}
 .evidence-references{margin-top:10px;padding-top:8px;border-top:1px solid var(--line);font-size:10px;line-height:1.7}

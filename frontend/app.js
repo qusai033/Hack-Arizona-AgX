@@ -183,10 +183,18 @@ function renderDecisionMetadata(e) {
   tag(`Input ${q.overall_status}`,`Input checks: ${q.assessment}. Does not verify meteorological accuracy.`);
   tag(`5 ft ${q.ground_5ft.status}`,q.ground_5ft.issues.join('; ')||'Required fields verified by input contract');
   tag(`30 ft ${q.canopy_30ft.status}`,q.canopy_30ft.issues.join('; ')||'Required fields verified by input contract');
-  if(q.assessment==='STRUCTURE_ONLY')tag('Freshness not assessed','No observation freshness clock was supplied; future-valid NWS rows are not sensor observations');
+  if(mode==='forecast'){
+    try{
+      const issuance=validateForecastIssuance(
+        {[weatherForecast?.issuance_source]:weatherForecast?.issued_at},
+        weatherForecast?.evaluation_context?.evaluationTimeMs);
+      tag('NWS issue age checked',`Forecast issued ${Math.round(issuance.issuance_age_minutes)} minutes before evaluation; passed the forecast issuance-age policy. This does not verify orchard sensors.`);
+    }catch{tag('NWS issue age unverified');}
+    tag('No orchard sensors connected','The 5 ft and 30 ft values are modeled. Sensor-observation age does not apply.');
+  }else if(q.assessment==='STRUCTURE_ONLY')tag('Simulation clock','Demo timestamps are simulated; current sensor-observation freshness is not applicable.');
   const rules=e.triggered_rules;
   const origin=[...new Set(rules.map(r=>r.provenance).filter(Boolean))];
-  tag(origin.length?`Rule origin: ${origin.join(' / ')}`:'No rules triggered',
+  tag(origin.length?`Rule origin: ${origin.join(' / ')}`:e.multi_height_status==='GO'?'Weather checks passed':'No weather rule details',
     'Illustrative screening thresholds are not verified product-label requirements');
   if(mode==='forecast')tag('HEIGHTS MODELED','Regional NWS inputs do not measure the orchard at 5 ft and 30 ft');
 }
@@ -635,6 +643,7 @@ function failNoObservation(message) {
   $('decision-label').textContent='CANOPYGUARD · NO MEASURED ORCHARD DATA';
   $('headline').textContent='An on-site spraying recommendation cannot be verified.';
   $('decision-note').textContent='Regional NWS model is not an orchard sensor measurement.';
+  $('decision-metadata').textContent='NWS issue age unavailable · No orchard sensors connected';
   $('decision-explanation-body').textContent='No verified weather evaluation can be explained while the forecast is unavailable. The actual product label and on-site conditions take precedence.';
   $('error-message').hidden=false;
   $('error-message').textContent=message;

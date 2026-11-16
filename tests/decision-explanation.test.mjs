@@ -16,6 +16,65 @@ const base=()=>({
   pesticide_profile:getProfile('contact_fungicide')
 });
 const evaluated=input=>evaluateSnapshot(input,{evaluationTimeMs:Date.parse(input.timestamp)});
+const inputCard=html=>html.match(/<article[^>]*data-evidence-check="Input validity"[\s\S]*?<\/article>/)?.[0];
+
+test('valid inputs explicitly pass even when weather rules produce STOP',()=>{
+  const input=base();input.readings.canopy_30ft.temp_f=75;
+  const snapshot=evaluated(input);
+  assert.equal(snapshot.evaluation.multi_height_status,'STOP');
+  const card=inputCard(decisionExplanation(snapshot));
+  assert.match(card,/data-evidence-status="PASSED"/);
+  assert.match(card,/Input checks passed/);
+  assert.match(card,/5 ft: checks passed; 30 ft: checks passed/);
+  assert.doesNotMatch(card,/No rule triggered|Screening rule:|Data VALID/);
+  assert.match(card,/<details class="evidence-input-policy">/);
+  assert.match(card,/does not verify sensor calibration, on-site measurements, or application safety/);
+});
+
+test('stale observations show the actual STOP failure and per-height states',()=>{
+  const input=base();
+  const snapshot=evaluateSnapshot(input,{nowMs:Date.parse(input.timestamp)+360000});
+  const card=inputCard(decisionExplanation(snapshot));
+  assert.match(card,/data-evidence-status="STOP"/);
+  assert.match(card,/Input checks failed/);
+  assert.match(card,/Overall decision: STOP/);
+  assert.match(card,/5 ft: stale data; 30 ft: stale data/);
+  assert.ok(card.includes(snapshot.evaluation.triggered_rules[0].explanation));
+  assert.doesNotMatch(card,/Input checks passed/);
+  const html=decisionExplanation(snapshot);
+  assert.equal((html.match(/data-evidence-status="NOT_EVALUATED"/g)||[]).length,5);
+  assert.doesNotMatch(html,/data-evidence-status="PASSED"/);
+});
+
+test('invalid evaluation context cannot be labeled passed when both readings are valid',()=>{
+  const input=base();
+  const snapshot=evaluateSnapshot(input,{evaluationTimeMs:-1});
+  const card=inputCard(decisionExplanation(snapshot));
+  assert.match(card,/Input checks failed/);
+  assert.match(card,/evaluationTimeMs must be a finite Unix millisecond timestamp/);
+  assert.match(card,/5 ft: checks passed; 30 ft: checks passed/);
+  assert.doesNotMatch(card,/Input checks passed/);
+});
+
+test('missing or incomplete quality assessments never claim input checks passed',()=>{
+  for(const quality of [undefined,{overall_status:'VALID'},{overall_status:'VALID',
+    ground_5ft:{status:'VALID'},canopy_30ft:{status:'VALID'}}]){
+    const snapshot=evaluated(base());snapshot.evaluation.data_quality=quality;
+    const card=inputCard(decisionExplanation(snapshot));
+    assert.match(card,/data-evidence-status="UNVERIFIED"/);
+    assert.match(card,/Input checks unverified/);
+    assert.doesNotMatch(card,/Input checks passed/);
+  }
+});
+
+test('input-validation failure details are escaped',()=>{
+  const input=base();
+  const snapshot=evaluateSnapshot(input,{evaluationTimeMs:-1});
+  snapshot.evaluation.triggered_rules[0].explanation='<script>untrusted</script>';
+  const card=inputCard(decisionExplanation(snapshot));
+  assert.doesNotMatch(card,/<script>/);
+  assert.match(card,/&lt;script&gt;untrusted&lt;\/script&gt;/);
+});
 
 test('GO explanation shows actual wind, gradient, zero triggered rules and no clearance claim',()=>{
   const html=decisionExplanation(evaluated(base()),{mode:'demo'});
@@ -23,10 +82,11 @@ test('GO explanation shows actual wind, gradient, zero triggered rules and no cl
   assert.match(html,/Actual triggered rules: 0 STOP and 0 CAUTION/);
   assert.match(html,/5 ft 5\.0 mph; 30 ft 5\.0 mph/);
   assert.match(html,/30 ft minus 5 ft = −?\-?1\.0°F/);
-  assert.match(html,/No rule triggered/);
+  assert.equal((html.match(/>Check passed</g)||[]).length,5);
+  assert.doesNotMatch(html,/No rule triggered/);
   assert.match(html,/never certifies that spraying is safe/);
   assert.match(html,/SIMULATED demo readings/);
-  assert.match(html,/observation freshness NOT assessed/);
+  assert.match(html,/Demo timestamps use the simulation clock/);
   assert.match(html,/illustrative CanopyGuard cutoff/);
 });
 
@@ -53,6 +113,8 @@ test('CAUTION explains weak inversion and configured thresholds without claiming
   assert.equal(s.evaluation.multi_height_status,'CAUTION');
   assert.match(html,/1 CAUTION/);
   assert.match(html,/MODELED estimates/);
+  assert.match(html,/NWS forecast issuance age is checked separately/);
+  assert.match(html,/Sensor-observation age does not apply/);
   assert.match(html,/greater than 1\.0°F/);
   assert.match(html,/data-evidence-status="CAUTION"/);
   assert.match(html,/NOT validate the project's inversion, shear/);
